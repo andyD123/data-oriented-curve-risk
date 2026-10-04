@@ -29,20 +29,95 @@ Same book and curves. Scalar, one core, replication excluded. `g++ -O3 -std=c++2
 
 All agree to 4e-11. The tape's cost is memory traffic; the geometry-aware N·K adjoint is within 1.7x of the scan at scalar level.
 
-## Vectorised LRU date cache: the layout optimisation without the scan (`scenario_bench.cpp`)
+## LRU date cache: grouping trades by shared schedule (`scenario_bench.cpp`)
 
-Repeated wave valuation with an on-demand cache in front of the curve: each entry is one aligned column of discount
-(or projection) factors for all 132 wave scenarios at one date; a miss locates the interval once and fills the
-column; a hit is one broadcast and a contiguous multiply-add. Sorting instruments by schedule is the cache policy.
-Same book specification as the §9 benchmark.
+This example shows why the order in which trades are priced matters when scenario curves are cached by date.
+It computes the 132 wave scenarios (30 discount-curve and 36 projection-curve nodes, each bumped up and down)
+for a book of bonds and vanilla swaps by repricing on a scenario-vector curve. Same book specification as the
+§9 benchmark.
+
+### How the pricing is vectorised
+
+For each payment date the curve supplies one column of 136 doubles: the discount (or projection) factor at that
+date for every scenario, padded from 132 to a multiple of 8. A fixed cashflow is priced with one broadcast of its
+amount and a multiply-add down the column, which is 17 AVX-512 FMAs on contiguous memory. The pricing loop has no
+per-scenario interpolation and no `exp`; those are done once per column, when the column is filled.
+
+Columns are computed on demand and held in an LRU cache with a fixed number of columns per curve. A miss locates
+the curve interval once and fills the column; a hit reuses it. A column is 1,088 bytes, so 64 columns are 70 KB
+per curve.
+
+### Why the order matters
+
+Trades on the same schedule pay on the same dates. Priced one after another, ordered by tenor, they reuse the same
+columns while those columns are in the cache; when the group ends its columns are evicted and the next group's are
+loaded. The cache therefore needs only as many columns as the longest schedule has dates: 58 in this book
+(29 years, semi-annual), so 64 columns are enough and 32 are not. A 15-year semi-annual book (30 dates) would need 32.
+
+In random order, consecutive trades use unrelated dates. The cache keeps evicting columns that are needed again
+soon, and it stops recomputing them only when it can hold every date in the book.
+
+The floor is each column computed once per curve: 7,020 column evaluations for this book (3,480 dates used by the
+discount curve plus 3,540 used by the projection curve).
+
+### Results
+
+![LRU date cache, 100,000 trades: time per curve update against cache capacity, random order and sorted by schedule](lru_cache_100k.svg)
+
+100,000 trades; misses are column evaluations, both curves together; time is per curve update, best of 3 runs.
+
+| columns per curve | cache per curve | random: misses | random: hit rate | random: time | sorted: misses | sorted: hit rate | sorted: time |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 17 KB | 5,185,875 | 23.2% | 2,763 ms | 4,778,344 | 29.2% | 2,650 ms |
+| 32 | 35 KB | 4,842,108 | 28.3% | 2,533 ms | 3,264,181 | 51.6% | 1,761 ms |
+| **64** | **70 KB** | **4,469,511** | **33.8%** | **2,366 ms** | **10,500** | **99.8%** | **265 ms** |
+| 128 | 139 KB | 4,366,199 | 35.3% | 2,621 ms | 10,500 | 99.8% | 261 ms |
+| 256 | 279 KB | 4,154,015 | 38.5% | 2,395 ms | 10,500 | 99.8% | 256 ms |
+| 1,024 | 1.1 MB | 2,889,082 | 57.2% | 1,620 ms | 10,500 | 99.8% | 238 ms |
+| 4,096 | 4.5 MB | 7,020 | 99.9% | 329 ms | 7,020 | 99.9% | 255 ms |
+
+500,000 trades, 64 columns per curve, best of 2 runs:
+
+| order | misses | hit rate | time |
+|---|---:|---:|---:|
+| random | 22,348,094 | 33.9% | 13,116 ms |
+| sorted by schedule | 10,500 | 99.97% | 1,305 ms |
+
+At 64 columns, sorted order is 10x faster than random order at 500,000 trades and computes 2,128 times fewer
+columns. Its misses do not grow with the book (10,500 at both sizes), because they depend only on the number of
+distinct dates; random-order misses grow with the number of trades.
+
+Agreement with the scalar scan: 5.1e-8 at 100,000 trades and 6.6e-8 at 500,000, which is the truncation error of
+the central difference at eps = 1e-5.
+
+Measured on one core of an Intel Xeon VM at 2.1 GHz (48 KB L1d, 2 MB L2), GCC 13.3, AVX-512. Miss counts and
+hit rates are deterministic (fixed seeds); times vary between runs. The two recorded 500,000-trade runs at 64
+columns, sorted (`recorded_lru_500k_cap64_both_orders.txt` and `recorded_lru_500k.txt`), differ by a factor of two.
+
+### The sort key, and the 10,500 misses
+
+The code sorts by instrument type, then start date, then tenor (`sig = type * 100000 + start * 100 + years`), so all
+bonds are priced before all swaps. A swap pays on the same discount dates as a bond with the same start date, but
+by the time the swaps are priced those columns have been evicted. At 64 columns the projection curve is at its
+floor (3,540 misses) and the discount curve has 6,960, every discount column computed twice.
+
+Grouping by schedule first (start date, then type, then tenor) puts bonds and swaps that share dates next to each
+other and reaches the floor of 7,020 at 64 columns. This was measured by changing only the sort key in a copy of
+the source; it is not yet in the code.
+
+In a seasoned book, where schedules are generated backwards from the last regular payment date, the
+corresponding key is the last regular payment date (its position in the payment cycle), then maturity.
+
+### Reproducing
+
+Built by the `release` preset with GCC or Clang (not with MSVC). From `build/release/examples/benchmark_paper`:
 
 ```
-g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result scenario_bench.cpp -o scenario_bench
-./scenario_bench 100000 1 2                         # with the per-scenario baseline and the capacity sweep
-LRU_ALL=1 LRU_CAPS=64 ./scenario_bench 500000 0 2   # like-for-like random vs sorted at 64 columns per curve
+LRU_CAPS=16,32,64,128,256,1024,4096 ./scenario_bench 100000 0 3   # the 100,000-trade sweep above
+LRU_ALL=1 LRU_CAPS=64 ./scenario_bench 500000 0 2                 # the 500,000-trade comparison at 64 columns
 ```
 
-500k, 64 columns per curve (70 KB): sorted 1,310 ms with 10,500 column evaluations; random 10,921 ms with 22.3 million.
-100k capacity sweep (`recorded_lru_100k_sweep.txt`): sorted reaches the cold-start floor at 64 columns; random needs
-the whole date set (4,096) to stop re-evaluating. A prebuilt full table (the batch special case) is also timed.
-Agreement with the scan: 6.6e-8 (central-difference floor).
+Arguments are trades, baseline (1 adds the per-scenario repricing baseline) and repetitions. Above 100,000 trades
+the random-order runs below 1,024 columns are skipped unless `LRU_ALL=1` is set; the CLion configuration
+`scenario_bench 500k` does not set it. Standalone:
+`g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result scenario_bench.cpp -o scenario_bench`.
