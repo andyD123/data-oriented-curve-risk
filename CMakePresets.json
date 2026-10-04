@@ -8,11 +8,12 @@
   "configurePresets": [
     {
       "name": "release",
-      "displayName": "Release (STDX)",
+      "displayName": "Release (AVX2 and AVX-512 targets)",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LADDER_LANES": "STDX",
+        "LADDER_LANES": "AVX2",
+        "LADDER_DUAL_ISA": "ON",
         "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     },

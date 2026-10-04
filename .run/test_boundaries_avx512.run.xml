@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="test_boundaries (AVX-512)" type="CMakeRunConfiguration" factoryName="Application" PROGRAM_PARAMS="" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="data_oriented_curve_risk" TARGET_NAME="test_boundaries_avx512" CONFIG_NAME="release" RUN_TARGET_PROJECT_NAME="data_oriented_curve_risk" RUN_TARGET_NAME="test_boundaries_avx512">
+    <method v="2">
+      <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+    </method>
+  </configuration>
+</component>

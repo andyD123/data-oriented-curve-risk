@@ -1,7 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="test_ladder" type="CMakeRunConfiguration" factoryName="Application" PROGRAM_PARAMS="" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="ladder" TARGET_NAME="test_ladder" CONFIG_NAME="release" RUN_TARGET_PROJECT_NAME="ladder" RUN_TARGET_NAME="test_ladder">
-    <method v="2">
-      <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
-    </method>
-  </configuration>
-</component>

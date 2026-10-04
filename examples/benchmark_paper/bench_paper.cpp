@@ -20,6 +20,7 @@
 #include <random>
 #include <unordered_map>
 #include <vector>
+#include "ladder/aligned_memory.hpp"
 
 namespace stdx = std::experimental;
 using vec8 = stdx::native_simd<double>;
@@ -394,7 +395,7 @@ int main(int argc, char** argv)
     auto L = build_group_layout(book, sigs);
     double t_grp_layout = now_ms() - t0;
     const size_t stride = (size_t)(Ko + Kp) * LANES;
-    double* out_g = (double*)std::aligned_alloc(64, L.groups.size() * stride * sizeof(double));
+    double* out_g = (double*)ladder::allocate_aligned(L.groups.size() * stride * sizeof(double));
     double best_tab = 1e30, best_grp_n = 1e30, best_grp_s = 1e30;
     DateTables T;
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); T = build_date_tables(L, ois, proj); best_tab = std::min(best_tab, now_ms() - t0); }
@@ -437,6 +438,6 @@ int main(int argc, char** argv)
     row("GRP  tables + streaming kernel", best_tab + best_grp_s);
     std::printf("\none-off layout builds: scan %.1f ms, group %.1f ms; unique dates %zu; groups %zu; output %.0f MB\n",
                 t_scan_layout, t_grp_layout, L.unique_days.size(), L.groups.size(), L.groups.size() * stride * 8 / 1e6);
-    std::free(out_g);
+    ladder::free_aligned(out_g);
     return 0;
 }

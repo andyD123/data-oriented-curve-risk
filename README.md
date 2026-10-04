@@ -37,7 +37,7 @@ unknown backend names are configuration errors. Normal/streaming store equivalen
 tested within each configuration, not claimed as cross-backend bitwise reproducibility.
 STDX can use x86 streaming stores when its target supports them; portable loops cannot.
 
-Default targets are `test_ladder`, `test_boundaries`, `bench_library`, `aggregation` and `scan_wave`.
+Default targets (single-ISA build) are `test_ladder`, `test_boundaries`, `bench_library`, `aggregation` and `scan_wave`; the `release` preset builds the vectorised ones as `_avx2` and `_avx512` pairs (below).
 CTest runs the original suite, independent boundary/oracle tests and a small benchmark
 correctness gate. With Python 3 installed it also runs an isolated wave-fixture replay
 and malformed-input checks (standard library only; four CTest tests in total).
@@ -68,22 +68,30 @@ cmake --build --preset release --parallel 2
 ctest --preset release
 ```
 
-For the paper benchmarks, use `release-paper` in all three commands. No extra
-`-DCMAKE_BUILD_TYPE=Release` or `--config Release` is needed: the presets supply them.
-In CLion, reload CMake after pulling and select the appropriate Release preset/profile;
-old local Debug profiles and already-built Debug executables are not changed by a pull.
-The `release` preset uses STDX. Choose `release-portable` when `<experimental/simd>` is
-unavailable. WSL or MinGW with a suitable GCC/libstdc++ toolchain remains the route for
-STDX/paper examples on Windows. Explicit Debug builds can still be configured separately
-for diagnosis; they are not part of the shipped benchmark presets.
+The `release` preset builds both instruction sets. Each vectorised target exists twice,
+built against `ladder_avx2` (`-mavx2 -mfma`) and `ladder_avx512`
+(`-mavx512f -mavx512dq -mfma -mprefer-vector-width=512`):
+`test_ladder_avx2` / `test_ladder_avx512`, `test_boundaries_avx2` / `test_boundaries_avx512`,
+`bench_library_avx2` / `bench_library_avx512`. The scalar examples (`aggregation`,
+`scan_wave`, the QuantLib generators) are built once. With GCC/Clang and
+`<experimental/simd>`, `release` also builds the AVX-512 paper benchmarks
+(`bench_paper`, `scenario_bench`, `adjoint_bench`); with other compilers they are skipped
+with a message. Configure checks whether the build host can execute AVX-512: both variants
+are always built, but on a host without AVX-512 CTest runs only the `_avx2` tests and the
+`_avx512` binaries must not be run there. The equivalent cache settings are
+`-DLADDER_LANES=AVX2 -DLADDER_DUAL_ISA=ON`.
 
-For the historical AVX-512 paper, adjoint and LRU scenario benchmarks, select the new
-`release-paper` preset (on supported x86 hardware), or set
-`-DLADDER_BUILD_PAPER_BENCHMARKS=ON`. This exposes `bench_paper`, `adjoint_bench`
-and `scenario_bench` with the existing shared run configurations. Keeping these optional
-prevents their eight-wide native-SIMD assumption from breaking ordinary portable builds.
-They retain their historical input-handling/benchmark assumptions, not the new strict
-conformance contract of `bench_library`.
+The single-ISA presets are unchanged: `release-avx512`, `release-avx2`, `release-portable`
+(no intrinsics; use it when neither AVX2 nor AVX-512 is wanted) and `release-paper`. No extra
+`-DCMAKE_BUILD_TYPE=Release` or `--config Release` is needed: the presets supply them.
+In CLion, reload CMake after pulling and enable the `release` profile; the shared run
+configurations in `.run/` name the `release` targets, including both ISA variants.
+WSL or MinGW with GCC 13+/libstdc++ is the route for the paper benchmarks on Windows.
+Explicit Debug builds can still be configured separately for diagnosis; they are not part
+of the shipped presets.
+
+The paper benchmarks retain their historical input-handling/benchmark assumptions, not the
+strict conformance contract of `bench_library`.
 
 `scan_wave [data-and-output-directory]` optionally selects a separate replay directory;
 its no-argument CLion run uses build-directory copies. The CTest replay always selects
