@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <memory>
 #include <random>
@@ -67,6 +68,40 @@ struct Swap : Instrument { std::vector<FixedFlow> fixed; std::vector<FloatFlow> 
 
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
+// ---- report helpers: build description and thousands separators
+static const char* lanes_name() {
+#if defined(LADDER_LANES_AVX512)
+    return "AVX-512 intrinsics";
+#elif defined(LADDER_LANES_AVX2)
+    return "AVX2 + FMA intrinsics";
+#elif defined(LADDER_LANES_STDX)
+    return "std::experimental::simd";
+#else
+    return "portable (compiler auto-vectorised)";
+#endif
+}
+static std::string compiler_name() {
+#if defined(__clang__)
+    return std::string("Clang ") + __clang_version__;
+#elif defined(__GNUC__)
+    return std::string("GCC ") + __VERSION__;
+#elif defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_FULL_VER);
+#else
+    return "unknown compiler";
+#endif
+}
+static std::string size_text(double bytes) {
+    char b[32];
+    if (bytes >= 1e6) std::snprintf(b, sizeof b, "%.1f MB", bytes / 1e6); else std::snprintf(b, sizeof b, "%.1f KB", bytes / 1e3);
+    return b;
+}
+static std::string grouped(size_t v) {
+    std::string d = std::to_string(v), r;
+    for (size_t k = 0; k < d.size(); ++k) { if (k && (d.size() - k) % 3 == 0) r += ','; r += d[k]; }
+    return r;
+}
+
 int main(int argc, char** argv) try
 {
     enter_example_dir();
@@ -98,7 +133,14 @@ int main(int argc, char** argv) try
             sw->fixed = in.fixed; sw->flt = in.flt; sw->ois = in.ois; aos.push_back(std::move(sw)); }
         ncf += in.fixed.size() + in.flt.size() + in.ois.size();
     }
-    std::printf("N=%zu instruments (bonds / IBOR swaps / OIS swaps), %.1f cashflows each, stencils %d+%d, logical output %.0f MB\n", N, (double)ncf / N, Kd, Kp, N * (Kd + Kp) * 8 / 1e6);
+    const double nout = (double)N * (Kd + Kp);
+    std::printf("bench_library: curve sensitivities for a seasoned book, single thread\n");
+    std::printf("build:   %s backend; %s\n", lanes_name(), compiler_name().c_str());
+    std::printf("book:    %s instruments (bonds, IBOR swaps, OIS swaps); %s cashflows, %.1f per instrument\n",
+                grouped(N).c_str(), grouped(ncf).c_str(), (double)ncf / N);
+    std::printf("outputs: %d sensitivities per instrument (%d discount-curve nodes + %d projection-curve nodes); %s values, %s\n",
+                Kd + Kp, Kd, Kp, grouped(N * (Kd + Kp)).c_str(), size_text(nout * 8).c_str());
+    std::fflush(stdout);
 
     // ---- SCAN: replicate once (layout), scan per run
     double t0 = now_ms();
@@ -128,10 +170,9 @@ int main(int argc, char** argv) try
     for (double v : sp) valid = valid && std::isfinite(v);
     for (size_t j=0; j<L.groups.size()*L.stride(Kd,Kp); ++j) valid = valid && std::isfinite(out[j]);
     valid = valid && std::isfinite(worst) && worst < 1e-9;
-    std::printf("GRP vs SCAN max rel diff %.1e\n", worst);
 
     // ---- BASE
-    double t_base = -1;
+    double t_base = -1, w_base = 0;
     if (run_base) { std::vector<double> bd(N * Kd), bp(N * Kp); const double eps = 1e-5; t0 = now_ms();
         for (int k = 1; k <= Kd; ++k) { Curve up = cd.bumped(k, eps), dn = cd.bumped(k, -eps); for (size_t i = 0; i < N; ++i) bd[i*Kd+k-1] = (aos[i]->npv(up, cp) - aos[i]->npv(dn, cp)) / (2*eps); }
         for (int k = 1; k <= Kp; ++k) { Curve up = cp.bumped(k, eps), dn = cp.bumped(k, -eps); for (size_t i = 0; i < N; ++i) bp[i*Kp+k-1] = (aos[i]->npv(cd, up) - aos[i]->npv(cd, dn)) / (2*eps); }
@@ -141,21 +182,53 @@ int main(int argc, char** argv) try
             valid = valid && std::isfinite(bd[i]) && std::fabs(bd[i]-sd[i]) <= 1e-2 + 1e-6*std::max(std::fabs(bd[i]),std::fabs(sd[i]));
         for (size_t i=0; i<bp.size(); ++i)
             valid = valid && std::isfinite(bp[i]) && std::fabs(bp[i]-sp[i]) <= 1e-2 + 1e-6*std::max(std::fabs(bp[i]),std::fabs(sp[i]));
-        std::printf("BASE vs SCAN max rel diff %.1e (discount values > 1e4; both ladders gated)\n", w); }
+        w_base = w; }
 
-    const double nout = (double)N * (Kd + Kp);
-    auto row = [&](const char* name, double ms) { std::printf("%-46s %10.2f ms %9.3f ns/output %10s\n", name, ms, ms * 1e6 / nout, t_base > 0 ? (std::to_string((int)std::lround(t_base / ms)) + "x").c_str() : "-"); };
-    std::printf("\n");
-    if (run_base) row("BASE bump-and-reprice", t_base);
-    row("SCAN scalar, per instrument", best_scan);
-    row("SCAN replication of unit cashflows (per curve update)", best_rep);
-    row("GRP  date table refresh (per curve update)", best_tab);
-    row("GRP  8-lane, normal stores", best_n);
-    row("GRP  8-lane, streaming stores", best_s);
-    { size_t live = 0; for (auto& g : L.groups) live += g.n_valid; std::printf("one-off: replication %.0f ms, group layout %.0f ms; unique dates %zu; groups %zu; lane occupancy %.1f%%\n", t_rep, t_layout, L.table.day.size(), L.groups.size(), 100.0 * live / (L.groups.size() * LANES)); }
-    std::printf("storage: logical %zu bytes; padded %zu bytes\n", N * (Kd + Kp) * sizeof(double), L.groups.size() * L.stride(Kd,Kp) * sizeof(double));
+    const double t_scan = best_rep + best_scan, t_grp = best_tab + best_s;
+    size_t live = 0; for (auto& g : L.groups) live += g.n_valid;
+    const double padded_bytes = (double)L.groups.size() * L.stride(Kd, Kp) * sizeof(double), logical_bytes = nout * 8;
+
+    std::printf("\nterms\n");
+    std::printf("  output            one sensitivity: one instrument against one curve node\n");
+    std::printf("  SCAN              reference method: scalar ladder, one instrument at a time\n");
+    std::printf("  GRP               grouped method: 8 instruments at a time, one per SIMD lane\n");
+    std::printf("  date table        discount and projection factors at each unique payment date, shared by all groups\n");
+    std::printf("  per curve update  work that is repeated every time the curves change\n");
+    std::printf("  time              wall clock, best of %d run%s\n", reps, reps == 1 ? "" : "s");
+
+    std::printf("\nresult: cost of one curve update                       time     per output%s\n", run_base ? "   vs BASE" : "");
+    auto result = [&](const char* name, double ms) {
+        std::printf("  %-44s %10.2f ms %10.3f ns", name, ms, ms * 1e6 / nout);
+        if (run_base) std::printf(" %8.0fx", t_base / ms);
+        std::printf("\n"); };
+    if (run_base) result("BASE  bump-and-reprice, every node up and down", t_base);
+    result("SCAN  replication + scalar ladder", t_scan);
+    result("GRP   date-table refresh + kernel", t_grp);
+    std::printf("  GRP is %.1fx faster than SCAN per curve update\n", t_scan / t_grp);
+
+    std::printf("\nbreakdown\n");
+    auto part = [&](const char* name, double ms, double units, const char* unit, const char* note) {
+        std::printf("  %-44s %10.2f ms %10.3f ns per %s%s\n", name, ms, ms * 1e6 / units, unit, note); };
+    part("SCAN  replication of unit cashflows (1)", best_rep, (double)ncf, "cashflow", "");
+    part("SCAN  scalar ladder", best_scan, nout, "output", "");
+    part("GRP   kernel, normal stores", best_n, nout, "output", "");
+    part("GRP   kernel, streaming stores (2)", best_s, nout, "output", "   <- used in result");
+    std::printf("  (1) each cashflow is re-expressed as unit cashflows whose amounts depend on the curves, so it is redone per update\n");
+    std::printf("  (2) streaming (non-temporal) stores write the output straight to memory, bypassing the cache\n");
+
+    std::printf("\naccuracy\n");
+    std::printf("  GRP vs SCAN max difference %.1e (relative to each instrument's largest sensitivity)\n", worst);
+    if (run_base) std::printf("  BASE vs SCAN max difference %.1e (relative, over discount sensitivities above 1e4)\n", w_base);
+
+    std::printf("\nsetup (one-off, not repeated per curve update)\n");
+    std::printf("  first replication %.0f ms (includes memory allocation); group layout %.0f ms\n", t_rep, t_layout);
+    std::printf("  %s unique payment dates in the date table; %s groups of 8\n", grouped(L.table.day.size()).c_str(), grouped(L.groups.size()).c_str());
+    std::printf("  lane occupancy %.1f%% (share of SIMD lanes holding a real instrument)\n", 100.0 * live / (L.groups.size() * LANES));
+    std::printf("  storage %s padded vs %s logical (+%.1f%% for empty lanes)\n", size_text(padded_bytes).c_str(), size_text(logical_bytes).c_str(),
+                100.0 * (padded_bytes / logical_bytes - 1.0));
     ladder::free_aligned(out);
-    std::printf("correctness gate: %s\n", valid ? "PASS" : "FAIL");
+    std::printf("\ncorrectness gate: %s (GRP agrees with SCAN to 1e-9 relative; every value finite%s)\n", valid ? "PASS" : "FAIL",
+                run_base ? "; BASE agrees with SCAN to 1e-2 absolute + 1e-6 relative" : "");
     return valid ? 0 : 1;
 } catch (const std::exception& e) {
     std::fprintf(stderr, "bench: %s\n", e.what()); return 1;
