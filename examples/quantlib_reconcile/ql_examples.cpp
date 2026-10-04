@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Reference built on QuantLib's own Examples (v1.33): MulticurveBootstrapping (Eonia + Euribor6M quotes,
 // 11 Dec 2012, from Ametrano & Bianchetti figs 25/31) and Bonds (4.5% 2007-2017 bond, ZC Aug 2013).
 // Change from the example: PiecewiseYieldCurve<Discount, LogLinear> instead of <Discount, Cubic>.
@@ -24,6 +25,7 @@ struct Inst { std::string name; std::vector<Leg> legs; std::vector<int> legkind;
 
 int main()
 {
+    enter_example_dir();
     Calendar calendar = TARGET();
     Date todaysDate(11, December, 2012);
     Settings::instance().evaluationDate() = todaysDate;

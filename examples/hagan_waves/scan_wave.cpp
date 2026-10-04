@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Box-wave ladders from unit cashflows priced on whatever curve QuantLib used (here the shipped cubic curves),
 // using the library scan. Input: unit_cashflows_wave.txt, wave_buckets.txt (written by ql_waves).
 #include <cstdio>
@@ -8,6 +9,7 @@
 using namespace ladder;
 static std::vector<double> read_row(FILE* f) { std::vector<double> v; char line[8192]; if (!std::fgets(line, sizeof line, f)) return v; char* p = line; char* e; for (;;) { double d = std::strtod(p, &e); if (e == p) break; v.push_back(d); p = e; } return v; }
 int main() {
+    enter_example_dir();
     FILE* bf = std::fopen("./wave_buckets.txt", "r"); Stencils Sd, Sp; Sd.B = read_row(bf); Sp.B = read_row(bf); std::fclose(bf);
     Sd.open_last = Sp.open_last = true;   // Hagan 2015 eq. 2.2b: last wave open-ended, matching ql_waves' BoxShifted
     FILE* in = std::fopen("./unit_cashflows_wave.txt", "r"); int n; (void)std::fscanf(in, "%d", &n);

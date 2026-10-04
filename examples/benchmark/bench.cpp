@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Two-curve bucketed-risk benchmark on the curves of QuantLib's MulticurveBootstrapping example
 // (node discount factors in quantlib_example_curves.txt, written by examples/quantlib_reconcile).
 //   BASE  bump-and-reprice: AoS instruments, virtual npv, central differences on every stencil of both curves
@@ -44,6 +45,7 @@ static double now_ms() { return std::chrono::duration<double, std::milli>(std::c
 
 int main(int argc, char** argv)
 {
+    enter_example_dir();
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000; int run_base = argc > 2 ? std::atoi(argv[2]) : 1; int reps = argc > 3 ? std::atoi(argv[3]) : 3;
     Curve cd, cp; load_curves("quantlib_example_curves.txt", cd, cp);
     const int Kd = cd.S.K(), Kp = cp.S.K();

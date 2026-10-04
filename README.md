@@ -46,6 +46,27 @@ target flags, PORTABLE 21–22 ms. Streaming stores exist only on the x86 intrin
 normal stores and lose that gain. The examples under `quantlib_reconcile/` and `hagan_waves/` need QuantLib C++
 (`apt install libquantlib0-dev` gives 1.33 on Ubuntu 24.04) and numpy; each has its own `run.sh` or Makefile.
 
+## Opening the project
+
+`CMakePresets.json` defines the build profiles — `release` (std::experimental::simd), `release-avx512`,
+`release-avx2`, `release-portable`, `debug` — and CLion, VS Code (CMake Tools) and Visual Studio pick them up on open.
+From a shell:
+
+```
+cmake --preset release && cmake --build --preset release && ctest --preset release
+```
+
+**CLion.** Open the repository folder. The presets appear as CMake profiles, and the shared run configurations in
+`.run/` appear in the run menu with their arguments set: `test_ladder`, `bench_paper 500k (paper section 9)`,
+`scenario_bench 100k (LRU date cache)`, `adjoint_bench 500k`, `bench_library 500k (seasoned book)`, `aggregation`,
+`scan_wave`, and the QuantLib harnesses. Each example starts in its own build directory, where its data files are
+copied, so no working directory needs setting.
+
+The code needs GCC 13+ with libstdc++ (`std::experimental::simd`, `std::aligned_alloc`); MSVC has neither. On Windows,
+add a WSL toolchain in CLion (`Settings → Build, Execution, Deployment → Toolchains → + → WSL`, Ubuntu 24.04 with
+`build-essential cmake libquantlib0-dev`) and put it first; the presets then build under it. The QuantLib targets are
+created only when QuantLib is found.
+
 ## The algorithm in one place
 
 `ladder/scan.hpp`:

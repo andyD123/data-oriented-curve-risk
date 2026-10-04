@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Adjoint baselines for §9: per-instrument reverse-mode derivative of PV(delta) = sum_i x_i exp(-sum_k delta_k ov_ki)
 // at delta = 0, on the paper's benchmark book and curves (bonds + vanilla swaps, Eonia/Euribor example curves).
 //   TAPE   generic reverse-mode: forward pass records one node per (cashflow, wave) exp and multiply, with the local
@@ -24,6 +25,7 @@ static double now_ms() { return std::chrono::duration<double, std::milli>(std::c
 
 struct TapeNode { int kind; int a, b; double w; };   // kind 0: y = exp(w * delta_b)  (a: unused)   kind 1: z = x_a * y_b ... simplified below
 int main(int argc, char** argv) {
+    enter_example_dir();
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000; int reps = argc > 2 ? std::atoi(argv[2]) : 3;
     FILE* in = std::fopen("quantlib_example_curves.txt", "r"); int nc; (void)std::fscanf(in, "%d", &nc); Curve cd = read_curve(in), cp = read_curve(in); std::fclose(in);
     auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };

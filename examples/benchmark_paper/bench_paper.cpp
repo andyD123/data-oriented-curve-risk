@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Dual-curve bucketed risk benchmark: bonds + vanilla swaps, K=50 pillars per curve.
 //
 //   BASE  traditional bump-and-reprice: AoS instruments, virtual npv, 2K bumped OIS curves for all
@@ -367,6 +368,7 @@ static double max_rel(const double* a, const double* b, size_t n, double floor_a
 
 int main(int argc, char** argv)
 {
+    enter_example_dir();
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000;
     int run_base = argc > 2 ? std::atoi(argv[2]) : 1;
     int reps = argc > 3 ? std::atoi(argv[3]) : 3;

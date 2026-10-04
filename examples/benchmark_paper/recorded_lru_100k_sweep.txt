@@ -1,0 +1,22 @@
+N=100000 bonds + vanilla swaps, 30+36 waves, 132 scenarios (padded 136), 3540 unique dates, scenario table 3.9 MB per curve
+scenario-vector vs scan: max rel diff 5.1e-08 (central difference at eps=1e-5, values > 1e4)
+SV    scenario-vector curve, random instrument order            405.2 ms     61.39 ns/sens        -
+SV    scenario-vector curve, instruments sorted by schedule      241.8 ms     36.63 ns/sens        -
+      scenario table build (per curve update)                     3.4 ms      0.52 ns/sens        -
+SCAN  scalar reverse scan, no scenarios                          86.2 ms     13.06 ns/sens        -
+
+on-demand LRU date cache (DR3 design), capacity per curve in date columns of 136 doubles:
+capacity order      time ms    ns/sens       misses   hit rate
+16       random      2115.5     320.53      5185875     23.17%
+16       sorted      2187.3     331.42      4778344     29.21%
+64       random      2154.1     326.37      4469511     33.78%
+64       sorted       262.4      39.75        10500     99.84%
+128      random      2134.4     323.40      4366199     35.31%
+128      sorted       255.7      38.75        10500     99.84%
+256      random      2053.0     311.06      4154015     38.46%
+256      sorted       258.2      39.12        10500     99.84%
+1024     random      1311.0     198.64      2889082     57.20%
+1024     sorted       258.4      39.15        10500     99.84%
+4096     random       373.4      56.58         7020     99.90%
+4096     sorted       266.7      40.41         7020     99.90%
+(distinct dates in the book: 3540; a cold-start miss per distinct date per curve is the floor)

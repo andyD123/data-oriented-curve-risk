@@ -1,0 +1,6 @@
+N=500000 bonds + vanilla swaps, 30+36 waves, 132 scenarios (padded 136), 3540 unique dates, scenario table 3.9 MB per curve
+scenario-vector vs scan: max rel diff 6.6e-08 (central difference at eps=1e-5, values > 1e4)
+SV    scenario-vector curve, random instrument order           1801.6 ms     54.59 ns/sens        -
+SV    scenario-vector curve, instruments sorted by schedule     1076.2 ms     32.61 ns/sens        -
+      scenario table build (per curve update)                     3.4 ms      0.10 ns/sens        -
+SCAN  scalar reverse scan, no scenarios                         302.8 ms      9.18 ns/sens        -

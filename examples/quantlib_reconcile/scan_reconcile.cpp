@@ -1,3 +1,4 @@
+#include "../example_dir.hpp"
 // Bucket ladders for the QuantLib-example instruments via the library: replication from the dumped terms,
 // log-linear curves on the example's bootstrapped nodes, scalar scan. Input cashflows2.txt (from ql_examples).
 #include <cmath>
@@ -12,6 +13,7 @@ struct Curve { Stencils S; std::vector<double> logD;
 static Curve read_curve(FILE* in) { char nm[16]; int n; (void)std::fscanf(in, "%15s %d", nm, &n); Curve c; c.S.B.resize(n); c.logD.resize(n);
     for (int i = 0; i < n; ++i) { double t, D; (void)std::fscanf(in, "%lf %lf", &t, &D); c.S.B[i] = t; c.logD[i] = std::log(D); } return c; }
 int main() {
+    enter_example_dir();
     FILE* in = std::fopen("./cashflows2.txt", "r"); int nc; (void)std::fscanf(in, "%d", &nc);
     Curve cd = read_curve(in), cp = read_curve(in);
     auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };
