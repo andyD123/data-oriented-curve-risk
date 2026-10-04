@@ -1,8 +1,8 @@
 # data-oriented-curve-risk
 
 C++20 companion sources for Andrew Drakeford's draft **Reworking the Inner Loop**.
-The SSRN manuscript is the technical draft; the Wilmott article is the shorter draft.
-This repository does not assert that either has been published.
+The SSRN manuscript is the technical draft.
+This repository does not assert that it has been published.
 
 The library computes first-order sensitivity to interval-forward **waves**. The wave
 definition and its separation from curve stripping are due to Hagan. The contribution
