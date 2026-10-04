@@ -1,6 +1,6 @@
 # data-oriented-curve-risk
 
-C++20 companion sources for Andrew Drakeford's draft **Reworking the Inner Loop**.
+C++20 companion sources for Andrew Drakeford's draft **Risk at the Write Speed: Ultra Fast Data-Oriented DV01**.
 The SSRN manuscript is the technical draft.
 This repository does not assert that it has been published.
 
