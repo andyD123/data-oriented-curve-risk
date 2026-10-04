@@ -54,12 +54,28 @@ and an optional curve-data path. Examples enter their own build directories, whe
 copies the bundled data, so CLion runs need no working-directory setting. Invalid arguments,
 missing/malformed data and failed numerical comparisons return a non-zero exit code.
 
-The existing `CMakePresets.json` profiles and shared `.run/` CLion configurations are retained.
-With CMake 3.21 or newer, use `cmake --preset release`, `cmake --build --preset release`
-and `ctest --preset release`. Presets `release`, `release-avx512`, `release-avx2`,
-`release-portable` and `debug` retain their names; the release/debug presets use STDX.
-Choose `release-portable` when `<experimental/simd>` is unavailable. WSL or MinGW
-with a suitable GCC/libstdc++ toolchain remains the route for STDX/paper examples on Windows.
+All shipped `CMakePresets.json` profiles **build Release binaries**: `release`,
+`release-avx512`, `release-avx2`, `release-portable` and `release-paper`.
+The configure presets set both `CMAKE_BUILD_TYPE=Release` (single-configuration generators)
+and `CMAKE_CONFIGURATION_TYPES=Release` (multi-configuration generators). Every build
+preset explicitly selects `configuration: Release`, equivalent to `--config Release`;
+the test presets select Release too. The former `debug` preset has been removed.
+With CMake 3.21 or newer:
+
+```sh
+cmake --preset release
+cmake --build --preset release --parallel 2
+ctest --preset release
+```
+
+For the paper benchmarks, use `release-paper` in all three commands. No extra
+`-DCMAKE_BUILD_TYPE=Release` or `--config Release` is needed: the presets supply them.
+In CLion, reload CMake after pulling and select the appropriate Release preset/profile;
+old local Debug profiles and already-built Debug executables are not changed by a pull.
+The `release` preset uses STDX. Choose `release-portable` when `<experimental/simd>` is
+unavailable. WSL or MinGW with a suitable GCC/libstdc++ toolchain remains the route for
+STDX/paper examples on Windows. Explicit Debug builds can still be configured separately
+for diagnosis; they are not part of the shipped benchmark presets.
 
 For the historical AVX-512 paper, adjoint and LRU scenario benchmarks, select the new
 `release-paper` preset (on supported x86 hardware), or set

@@ -12,7 +12,8 @@
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LADDER_LANES": "STDX"
+        "LADDER_LANES": "STDX",
+        "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     },
     {
@@ -21,7 +22,8 @@
       "binaryDir": "${sourceDir}/build/release-avx512",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LADDER_LANES": "AVX512"
+        "LADDER_LANES": "AVX512",
+        "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     },
     {
@@ -30,7 +32,8 @@
       "binaryDir": "${sourceDir}/build/release-avx2",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LADDER_LANES": "AVX2"
+        "LADDER_LANES": "AVX2",
+        "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     },
     {
@@ -39,16 +42,8 @@
       "binaryDir": "${sourceDir}/build/release-portable",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "LADDER_LANES": "PORTABLE"
-      }
-    },
-    {
-      "name": "debug",
-      "displayName": "Debug (STDX)",
-      "binaryDir": "${sourceDir}/build/debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "LADDER_LANES": "STDX"
+        "LADDER_LANES": "PORTABLE",
+        "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     },
     {
@@ -57,34 +52,37 @@
       "displayName": "Release (AVX-512 paper benchmarks)",
       "binaryDir": "${sourceDir}/build/release-paper",
       "cacheVariables": {
-        "LADDER_BUILD_PAPER_BENCHMARKS": "ON"
+        "LADDER_BUILD_PAPER_BENCHMARKS": "ON",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CONFIGURATION_TYPES": "Release"
       }
     }
   ],
   "buildPresets": [
     {
       "name": "release",
-      "configurePreset": "release"
+      "configurePreset": "release",
+      "configuration": "Release"
     },
     {
       "name": "release-avx512",
-      "configurePreset": "release-avx512"
+      "configurePreset": "release-avx512",
+      "configuration": "Release"
     },
     {
       "name": "release-avx2",
-      "configurePreset": "release-avx2"
+      "configurePreset": "release-avx2",
+      "configuration": "Release"
     },
     {
       "name": "release-portable",
-      "configurePreset": "release-portable"
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug"
+      "configurePreset": "release-portable",
+      "configuration": "Release"
     },
     {
       "name": "release-paper",
-      "configurePreset": "release-paper"
+      "configurePreset": "release-paper",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -93,42 +91,40 @@
       "configurePreset": "release",
       "output": {
         "outputOnFailure": true
-      }
+      },
+      "configuration": "Release"
     },
     {
       "name": "release-avx512",
       "configurePreset": "release-avx512",
       "output": {
         "outputOnFailure": true
-      }
+      },
+      "configuration": "Release"
     },
     {
       "name": "release-avx2",
       "configurePreset": "release-avx2",
       "output": {
         "outputOnFailure": true
-      }
+      },
+      "configuration": "Release"
     },
     {
       "name": "release-portable",
       "configurePreset": "release-portable",
       "output": {
         "outputOnFailure": true
-      }
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug",
-      "output": {
-        "outputOnFailure": true
-      }
+      },
+      "configuration": "Release"
     },
     {
       "name": "release-paper",
       "configurePreset": "release-paper",
       "output": {
         "outputOnFailure": true
-      }
+      },
+      "configuration": "Release"
     }
   ]
 }
