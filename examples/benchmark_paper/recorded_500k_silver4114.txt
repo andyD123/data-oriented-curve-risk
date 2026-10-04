@@ -1,0 +1,13 @@
+N=500000 instruments, 3480 signatures, 37.5 cashflows/instrument, K=30+36 (Eonia+Euribor6M nodes from the QuantLib example)
+GRP vs SCAN: max rel diff OIS 7.17e-11, projection 4.46e-16
+BASE vs SCAN (central diff, eps=1e-5, values > 1e4): max rel diff OIS 2.13e-08, projection 4.60e-09
+
+variant                                         time (ms)      ns/output    speedup
+BASE bump-and-reprice (2Ko+2Kp bumps)             82486.9        2499.60         1x
+SCAN scalar reverse scan, own D(t)                2221.40         67.315        37x
+GRP  shared D(t)/P(t) tables (per run)               0.22          0.007    370504x
+GRP  8-lane AVX-512, normal stores                 123.76          3.750       667x
+GRP  8-lane AVX-512, streaming stores              121.79          3.691       677x
+GRP  tables + streaming kernel                     122.01          3.697       676x
+
+one-off layout builds: scan 1851.3 ms, group 1809.4 ms; unique dates 3540; groups 64034; output 270 MB
