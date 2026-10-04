@@ -73,10 +73,11 @@ built against `ladder_avx2` (`-mavx2 -mfma`) and `ladder_avx512`
 (`-mavx512f -mavx512dq -mfma -mprefer-vector-width=512`):
 `test_ladder_avx2` / `test_ladder_avx512`, `test_boundaries_avx2` / `test_boundaries_avx512`,
 `bench_library_avx2` / `bench_library_avx512`. The scalar examples (`aggregation`,
-`scan_wave`, the QuantLib generators) are built once. With GCC/Clang and
-`<experimental/simd>`, `release` also builds the AVX-512 paper benchmarks
-(`bench_paper`, `scenario_bench`, `adjoint_bench`); with other compilers they are skipped
-with a message. Configure checks whether the build host can execute AVX-512: both variants
+`scan_wave`, the QuantLib generators) are built once. `release` also builds the LRU date
+cache example `scenario_bench` with the AVX-512 variant, on any compiler including MSVC. With
+GCC/Clang and `<experimental/simd>`, it also builds the AVX-512 paper benchmarks
+(`bench_paper`, `adjoint_bench`); with other compilers they are skipped with a message.
+Configure checks whether the build host can execute AVX-512: both variants
 are always built, but on a host without AVX-512 CTest runs only the `_avx2` tests and the
 `_avx512` binaries must not be run there. The equivalent cache settings are
 `-DLADDER_LANES=AVX2 -DLADDER_DUAL_ISA=ON`.
@@ -86,7 +87,7 @@ The single-ISA presets are unchanged: `release-avx512`, `release-avx2`, `release
 `-DCMAKE_BUILD_TYPE=Release` or `--config Release` is needed: the presets supply them.
 In CLion, reload CMake after pulling and enable the `release` profile; the shared run
 configurations in `.run/` name the `release` targets, including both ISA variants.
-WSL or MinGW with GCC 13+/libstdc++ is the route for the paper benchmarks on Windows.
+WSL or MinGW with GCC 13+/libstdc++ is the route for `bench_paper` and `adjoint_bench` on Windows.
 Explicit Debug builds can still be configured separately for diagnosis; they are not part
 of the shipped presets.
 

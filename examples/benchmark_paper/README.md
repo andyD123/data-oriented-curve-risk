@@ -60,57 +60,111 @@ soon, and it stops recomputing them only when it can hold every date in the book
 The floor is each column computed once per curve: 7,020 column evaluations for this book (3,480 dates used by the
 discount curve plus 3,540 used by the projection curve).
 
+### Reading the output
+
+A run prints five blocks. From the 500,000-trade run in the table below:
+
+```
+scenario_bench: wave scenarios priced from an LRU date cache, single thread
+build:     AVX-512 instructions; GCC 13.3.0
+book:      500,000 instruments (bonds and vanilla swaps); 3,540 distinct payment dates
+...
+result: LRU cache, cost of one curve update
+  columns     cache  order            time     per output        misses  hit rate
+       64     70 KB  random     15151.0 ms      459.12 ns    22,348,094    33.87%
+       64     70 KB  sorted      1663.6 ms       50.41 ns        10,500    99.97%
+       64     70 KB  grouped     1611.1 ms       48.82 ns         7,020    99.98%
+  at 64 columns: grouped is 9.4x faster than random, at the miss floor
+```
+
+1. **Header**: the instruction set and compiler the binary was built with, the book, the 132 scenarios and the
+   33,000,000 sensitivities they produce (66 per instrument, from central differences of the up/down pairs).
+2. **terms**: definitions, including the miss floor for this book (7,020: 3,480 discount-curve dates plus 3,540
+   projection-curve dates) and the three orders.
+3. **result**: the demonstration. One row per cache size and order; time is for one curve update, starting from an
+   empty cache. The last lines give grouped against random at each cache size, and say when grouped is at the floor.
+   Above 100,000 trades the random rows below 1,024 columns are not run unless `LRU_ALL=1` is set, and the output
+   says so.
+4. **context**: the same book priced from a full table (every date's column computed up front, no cache), the cost
+   of building that table per curve update, and the scalar reverse scan, which computes the sensitivities directly
+   without scenarios. With the baseline argument set to 1, a per-scenario repricing row (BASE) and speed-ups against
+   it are added.
+5. **accuracy**: the largest difference between the scenario results and the scalar scan, relative to
+   max(|value|, 1e4). About 5e-8 is the truncation error of the central difference at eps = 1e-5.
+
 ### Results
 
-![LRU date cache, 100,000 trades: time per curve update against cache capacity, random order and sorted by schedule](lru_cache_100k.svg)
+![LRU date cache, 100,000 trades: time per curve update against cache capacity, random order and grouped by shared schedule](lru_cache_100k.svg)
 
-100,000 trades; misses are column evaluations, both curves together; time is per curve update, best of 3 runs.
+Three orders are measured: **random** (shuffled); **sorted** (instrument type, then start date, then tenor); and
+**grouped** (start date, then type, then tenor, so trades sharing a schedule are adjacent; a prototype ordering in the
+code). Misses are column evaluations, both curves together; time is per curve update, best of 3 runs.
 
-| columns per curve | cache per curve | random: misses | random: hit rate | random: time | sorted: misses | sorted: hit rate | sorted: time |
+100,000 trades:
+
+| columns per curve | cache per curve | random: misses | random: time | sorted: misses | sorted: time | grouped: misses | grouped: time |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 17 KB | 5,185,875 | 23.2% | 2,763 ms | 4,778,344 | 29.2% | 2,650 ms |
-| 32 | 35 KB | 4,842,108 | 28.3% | 2,533 ms | 3,264,181 | 51.6% | 1,761 ms |
-| **64** | **70 KB** | **4,469,511** | **33.8%** | **2,366 ms** | **10,500** | **99.8%** | **265 ms** |
-| 128 | 139 KB | 4,366,199 | 35.3% | 2,621 ms | 10,500 | 99.8% | 261 ms |
-| 256 | 279 KB | 4,154,015 | 38.5% | 2,395 ms | 10,500 | 99.8% | 256 ms |
-| 1,024 | 1.1 MB | 2,889,082 | 57.2% | 1,620 ms | 10,500 | 99.8% | 238 ms |
-| 4,096 | 4.5 MB | 7,020 | 99.9% | 329 ms | 7,020 | 99.9% | 255 ms |
+| 16 | 17 KB | 5,185,875 | 3,248 ms | 4,778,344 | 3,005 ms | 4,778,344 | 3,065 ms |
+| 32 | 35 KB | 4,842,108 | 3,116 ms | 3,264,181 | 2,149 ms | 3,264,181 | 2,189 ms |
+| **64** | **70 KB** | **4,469,511** | **2,926 ms** | **10,500** | **272 ms** | **7,020** | **270 ms** |
+| 128 | 139 KB | 4,366,199 | 2,970 ms | 10,500 | 267 ms | 7,020 | 268 ms |
+| 256 | 279 KB | 4,154,015 | 2,780 ms | 10,500 | 268 ms | 7,020 | 287 ms |
+| 1,024 | 1.1 MB | 2,889,082 | 2,070 ms | 10,500 | 267 ms | 7,020 | 266 ms |
+| 4,096 | 4.5 MB | 7,020 | 328 ms | 7,020 | 308 ms | 7,020 | 304 ms |
+
+At 64 columns the hit rates are 33.8% random, 99.84% sorted and 99.90% grouped.
 
 500,000 trades, 64 columns per curve, best of 2 runs:
 
 | order | misses | hit rate | time |
 |---|---:|---:|---:|
-| random | 22,348,094 | 33.9% | 13,116 ms |
-| sorted by schedule | 10,500 | 99.97% | 1,305 ms |
+| random | 22,348,094 | 33.87% | 15,151 ms |
+| sorted | 10,500 | 99.97% | 1,664 ms |
+| grouped | 7,020 | 99.98% | 1,611 ms |
 
-At 64 columns, sorted order is 10x faster than random order at 500,000 trades and computes 2,128 times fewer
-columns. Its misses do not grow with the book (10,500 at both sizes), because they depend only on the number of
+At 64 columns, grouped order is 9.4x faster than random order at 500,000 trades and computes 3,184 times fewer
+columns. Its misses do not grow with the book (7,020 at both sizes), because they depend only on the number of
 distinct dates; random-order misses grow with the number of trades.
+
+The same 500,000-trade comparison on a second set-up (HP Omen 45L desktop with AVX-512, Windows, MSVC 19.44):
+
+| order | misses | hit rate | time |
+|---|---:|---:|---:|
+| random | 22,366,506 | 33.81% | 35,256 ms |
+| sorted | 10,500 | 99.97% | 3,231 ms |
+| grouped | 7,020 | 99.98% | 3,196 ms |
+
+Grouped is 11.0x faster than random there. Absolute times differ by about 2x between the two set-ups, which differ
+in both machine and compiler; the ratios and the sorted and grouped miss counts carry over.
 
 Agreement with the scalar scan: 5.1e-8 at 100,000 trades and 6.6e-8 at 500,000, which is the truncation error of
 the central difference at eps = 1e-5.
 
-Measured on one core of an Intel Xeon VM at 2.1 GHz (48 KB L1d, 2 MB L2), GCC 13.3, AVX-512. Miss counts and
-hit rates are deterministic (fixed seeds); times vary between runs. The two recorded 500,000-trade runs at 64
-columns, sorted (`recorded_lru_500k_cap64_both_orders.txt` and `recorded_lru_500k.txt`), differ by a factor of two.
+The 100,000-trade table and the first 500,000-trade table were measured on one core of an Intel Xeon VM at 2.1 GHz
+(48 KB L1d, 2 MB L2), GCC 13.3, AVX-512. Miss counts and hit rates are deterministic for a given standard library
+(fixed seeds). The book and the random order are generated with `std::uniform_int_distribution` and `std::shuffle`,
+whose algorithms differ between standard libraries, so the random-order miss count differs slightly between GCC and
+MSVC builds (22,348,094 and 22,366,506 above). Times vary between runs, by 20% or more on the VM. The two recorded
+500,000-trade runs at 64 columns, sorted (`recorded_lru_500k_cap64_both_orders.txt` and `recorded_lru_500k.txt`),
+differ by a factor of two.
 
-### The sort key, and the 10,500 misses
+### Sorted against grouped: the 10,500 misses
 
-The code sorts by instrument type, then start date, then tenor (`sig = type * 100000 + start * 100 + years`), so all
-bonds are priced before all swaps. A swap pays on the same discount dates as a bond with the same start date, but
-by the time the swaps are priced those columns have been evicted. At 64 columns the projection curve is at its
-floor (3,540 misses) and the discount curve has 6,960, every discount column computed twice.
+The sorted order prices all bonds before all swaps. A swap pays on the same discount dates as a bond with the same
+start date, but by the time the swaps are priced those columns have been evicted. At 64 columns the projection
+curve is at its floor (3,540 misses) and the discount curve has 6,960: every discount column is computed twice.
 
-Grouping by schedule first (start date, then type, then tenor) puts bonds and swaps that share dates next to each
-other and reaches the floor of 7,020 at 64 columns. This was measured by changing only the sort key in a copy of
-the source; it is not yet in the code.
+The grouped order puts bonds and swaps that share dates next to each other, and reaches the floor of 7,020 at 64
+columns. Here the 3,480 extra fills in sorted order cost little next to the pricing itself, so the two run in about
+the same time; the large difference is between random order and either schedule-based order.
 
 In a seasoned book, where schedules are generated backwards from the last regular payment date, the
-corresponding key is the last regular payment date (its position in the payment cycle), then maturity.
+corresponding grouping key is the last regular payment date (its position in the payment cycle), then maturity.
 
 ### Reproducing
 
-Built by the `release` preset with GCC or Clang (not with MSVC). From `build/release/examples/benchmark_paper`:
+Built by the `release` preset with the AVX-512 variant, on GCC, Clang and MSVC; it needs a CPU with AVX-512.
+From `build/release/examples/benchmark_paper`:
 
 ```
 LRU_CAPS=16,32,64,128,256,1024,4096 ./scenario_bench 100000 0 3   # the 100,000-trade sweep above
@@ -118,6 +172,12 @@ LRU_ALL=1 LRU_CAPS=64 ./scenario_bench 500000 0 2                 # the 500,000-
 ```
 
 Arguments are trades, baseline (1 adds the per-scenario repricing baseline) and repetitions. Above 100,000 trades
-the random-order runs below 1,024 columns are skipped unless `LRU_ALL=1` is set; the CLion configuration
-`scenario_bench 500k` does not set it. Standalone:
+the random-order runs below 1,024 columns are skipped unless `LRU_ALL=1` is set. In PowerShell, set the variables
+first, for example `$env:LRU_ALL = '1'; $env:LRU_CAPS = '64'`, and clear them afterwards with
+`Remove-Item Env:LRU_ALL, Env:LRU_CAPS`; with the Visual Studio generator the executable is in a `Release`
+subfolder. The program changes into its own data directory, so it can be run from anywhere.
+
+CLion configurations: `scenario_bench 100k (LRU date cache)` runs the default sweep with the baseline;
+`scenario_bench 500k (64 columns, all orders)` sets `LRU_ALL=1` and `LRU_CAPS=64` and reproduces the 500,000-trade
+table. Standalone:
 `g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result scenario_bench.cpp -o scenario_bench`.

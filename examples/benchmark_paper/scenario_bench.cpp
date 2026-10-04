@@ -6,15 +6,18 @@
 //   BASE      per-scenario repricing, bracket search + exp per cashflow per scenario (the §3 loop)
 //   SV-rand   scenario-vector curve, instruments in random order
 //   SV-sort   scenario-vector curve, instruments sorted by schedule signature (shared dates adjacent)
+//   LRU       on-demand date cache; orders random, sorted (type, start, tenor) and grouped (start, type, tenor; prototype)
 //   SCAN      scalar reverse scan (no scenarios at all)
 // Same book type as examples/benchmark_paper/adjoint_bench.cpp: bonds + vanilla swaps, example curves, 30+36 waves.
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <numeric>
 #include <random>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #include "ladder/stencil.hpp"
@@ -50,6 +53,33 @@ struct LruColumns {
 struct Fix { int d; double amt; };                 // d: date index into the scenario table
 struct Flt { int p, a, b; double scale; };
 struct Inst { int sig; std::vector<Fix> fix; std::vector<Flt> flt; };
+
+// ---- report helpers
+static const char* isa_name() {
+#if defined(__AVX512F__)
+    return "AVX-512";
+#elif defined(__AVX2__)
+    return "AVX2";
+#else
+    return "baseline x86-64 (no AVX2)";
+#endif
+}
+static std::string compiler_name() {
+#if defined(__clang__)
+    return std::string("Clang ") + __clang_version__;
+#elif defined(__GNUC__)
+    return std::string("GCC ") + __VERSION__;
+#elif defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_FULL_VER / 10000000) + "." + std::to_string(_MSC_FULL_VER / 100000 % 100) + "." + std::to_string(_MSC_FULL_VER % 100000);
+#else
+    return "unknown compiler";
+#endif
+}
+static std::string grouped_digits(size_t v) {
+    std::string d = std::to_string(v), r;
+    for (size_t k = 0; k < d.size(); ++k) { if (k && (d.size() - k) % 3 == 0) r += ','; r += d[k]; }
+    return r;
+}
 
 int main(int argc, char** argv) {
     enter_example_dir();
@@ -135,11 +165,19 @@ int main(int argc, char** argv) {
     struct LruRow { int cap; const char* ord; double ms; size_t miss, look; };
     std::vector<LruRow> lru_rows;
     std::vector<int> caps = {16, 64, 128, 256, 1024, 4096}; if (const char* e = std::getenv("LRU_CAPS")) { caps.clear(); for (const char* p = e; *p; ) { caps.push_back(std::atoi(p)); while (*p && *p != 0x2c) ++p; if (*p) ++p; } }
-    for (int cap : caps) for (int o = 0; o < 2; ++o) {
+    // PROTOTYPE ordering: group trades by shared schedule (start date first, then type, then tenor), so bonds and swaps
+    // that pay on the same dates are adjacent. sig = type * 100000 + start * 100 + years.
+    std::vector<size_t> grouped_order_prototype(N); std::iota(grouped_order_prototype.begin(), grouped_order_prototype.end(), 0);
+    auto grid_key_prototype = [](int sig) { return ((sig / 100) % 1000) * 1000 + (sig / 100000) * 100 + sig % 100; };
+    std::stable_sort(grouped_order_prototype.begin(), grouped_order_prototype.end(),
+                     [&](size_t a, size_t b){ return grid_key_prototype(book[a].sig) < grid_key_prototype(book[b].sig); });
+    const std::vector<size_t>* lru_orders[3] = {&rand_order, &sort_order, &grouped_order_prototype};
+    const char* lru_order_names[3] = {"random", "sorted", "grouped"};
+    for (int cap : caps) for (int o = 0; o < 3; ++o) {
         if (o == 0 && cap < 1024 && N > 100000 && !std::getenv("LRU_ALL")) continue;                     // random order with small caps thrashes: sweep at 100k only
-        const auto& ord = o ? sort_order : rand_order; double best = 1e30; size_t mi = 0, lo = 0;
+        const auto& ord = *lru_orders[o]; double best = 1e30; size_t mi = 0, lo = 0;
         for (int r = 0; r < reps; ++r) { double t0 = now_ms(); price_lru(ord, cap, mi, lo); best = std::min(best, now_ms() - t0); }
-        lru_rows.push_back({cap, o ? "sorted" : "random", best, mi, lo}); }
+        lru_rows.push_back({cap, lru_order_names[o], best, mi, lo}); }
 
     // ---- scalar scan reference (unit cashflows on base curves)
     std::vector<std::vector<UnitCashflow>> ucf(N); std::vector<std::vector<ProjectionTerm>> pt(N);
@@ -163,17 +201,56 @@ int main(int argc, char** argv) {
         for (int k = 0; k < Kp; ++k) for (size_t i = 0; i < N; ++i) ob[i*K+Ko+k] = (price(book[i], 2*Ko + k) - price(book[i], 2*Ko + Kp + k)) / (2*eps);
         t_base = now_ms() - t0; }
 
+    // distinct dates per curve: the miss floor (each column computed once per curve)
+    size_t ndisc = 0, nproj = 0;
+    { std::vector<char> ud(U, 0), up(U, 0);
+      for (const Inst& I : book) { for (const Fix& f : I.fix) ud[f.d] = 1; for (const Flt& f : I.flt) { ud[f.p] = 1; up[f.a] = 1; up[f.b] = 1; } }
+      for (size_t u = 0; u < U; ++u) { ndisc += ud[u]; nproj += up[u]; } }
+    const size_t floor_misses = ndisc + nproj;
+
     const double nout = (double)N * K;
-    std::printf("N=%zu bonds + vanilla swaps, %d+%d waves, %d scenarios (padded %d), %zu unique dates, scenario table %.1f MB per curve\n", N, Ko, Kp, S, SP, U, U * SP * 8 / 1e6);
-    std::printf("scenario-vector vs scan: max rel diff %.1e (central difference at eps=1e-5, values > 1e4)\n", w);
-    auto row = [&](const char* nm, double ms) { std::printf("%-58s %10.1f ms %9.2f ns/sens %8s\n", nm, ms, ms * 1e6 / nout, t_base > 0 ? (std::to_string((int)std::lround(t_base / ms)) + "x").c_str() : "-"); };
-    if (run_base) row("BASE  per-scenario repricing, bracket + exp per cashflow", t_base);
-    row("SV    scenario-vector curve, random instrument order", t_rand);
-    row("SV    scenario-vector curve, instruments sorted by schedule", t_sort);
-    row("      scenario table build (per curve update)", t_table);
-    row("SCAN  scalar reverse scan, no scenarios", t_scan);
-    std::printf("\non-demand LRU date cache (DR3 design), capacity per curve in date columns of %d doubles:\n", SP);
-    std::printf("%-8s %-7s %10s %10s %12s %10s\n", "capacity", "order", "time ms", "ns/sens", "misses", "hit rate");
-    for (auto& r : lru_rows) std::printf("%-8d %-7s %10.1f %10.2f %12zu %9.2f%%\n", r.cap, r.ord, r.ms, r.ms * 1e6 / nout, r.miss, 100.0 * (1.0 - (double)r.miss / r.look));
-    std::printf("(distinct dates in the book: %zu; a cold-start miss per distinct date per curve is the floor)\n", U);
+    std::printf("scenario_bench: wave scenarios priced from an LRU date cache, single thread\n");
+    std::printf("build:     %s instructions; %s\n", isa_name(), compiler_name().c_str());
+    std::printf("book:      %s instruments (bonds and vanilla swaps); %s distinct payment dates\n", grouped_digits(N).c_str(), grouped_digits(U).c_str());
+    std::printf("scenarios: %d per instrument (%d discount-curve + %d projection-curve nodes, each bumped up and down), padded to %d\n", S, Ko, Kp, SP);
+    std::printf("outputs:   %s sensitivities (%d per instrument, central differences of the up/down pairs)\n", grouped_digits(N * K).c_str(), K);
+
+    std::printf("\nterms\n");
+    std::printf("  column      the factors at one date under every scenario: %d doubles, %s bytes\n", SP, grouped_digits((size_t)SP * 8).c_str());
+    std::printf("  LRU cache   holds a fixed number of columns per curve; a miss computes a column, a hit reuses it\n");
+    std::printf("  misses      column computations, both curves together; the floor is %s, each column once\n", grouped_digits(floor_misses).c_str());
+    std::printf("              (%s discount-curve dates + %s projection-curve dates)\n", grouped_digits(ndisc).c_str(), grouped_digits(nproj).c_str());
+    std::printf("  orders      random = shuffled; sorted = type, then start date, then tenor;\n");
+    std::printf("              grouped = start date, then type, then tenor, so trades sharing a schedule are adjacent (prototype ordering)\n");
+    std::printf("  full table  every date's column computed up front (%.1f MB per curve), no cache\n", U * SP * 8 / 1e6);
+    std::printf("  time        wall clock per curve update, best of %d run%s\n", reps, reps == 1 ? "" : "s");
+
+    std::printf("\nresult: LRU cache, cost of one curve update\n");
+    std::printf("  %7s %9s  %-8s %12s %14s %13s %9s\n", "columns", "cache", "order", "time", "per output", "misses", "hit rate");
+    for (auto& r : lru_rows) {
+        const double kb = (double)r.cap * SP * 8 / 1e3;
+        char cache[32]; if (kb < 1000) std::snprintf(cache, sizeof cache, "%.0f KB", kb); else std::snprintf(cache, sizeof cache, "%.1f MB", kb / 1e3);
+        std::printf("  %7d %9s  %-8s %9.1f ms %11.2f ns %13s %8.2f%%\n", r.cap, cache, r.ord, r.ms, r.ms * 1e6 / nout,
+                    grouped_digits(r.miss).c_str(), 100.0 * (1.0 - (double)r.miss / r.look)); }
+    for (int cap : caps) {
+        const LruRow* rr = nullptr; const LruRow* rg = nullptr;
+        for (auto& r : lru_rows) if (r.cap == cap) { if (std::string(r.ord) == "random") rr = &r; if (std::string(r.ord) == "grouped") rg = &r; }
+        if (rr && rg) std::printf("  at %d columns: grouped is %.1fx faster than random%s\n", cap, rr->ms / rg->ms,
+                                  rg->miss == floor_misses ? ", at the miss floor" : "");
+        else if (rg && !rr) std::printf("  at %d columns: random order not run (skipped above 100,000 trades unless LRU_ALL=1)\n", cap); }
+
+    std::printf("\ncontext: same book, other methods\n");
+    auto ctx = [&](const char* nm, double ms, bool is_base = false) {
+        std::printf("  %-56s %9.1f ms %11.2f ns per output", nm, ms, ms * 1e6 / nout);
+        if (run_base) { if (is_base) std::printf(" %17s", "-"); else std::printf(" %8.0fx vs BASE", t_base / ms); }
+        std::printf("\n"); };
+    if (run_base) ctx("BASE  per-scenario repricing, bracket + exp per cashflow", t_base, true);
+    ctx("full table, random order", t_rand);
+    ctx("full table, sorted order", t_sort);
+    std::printf("  %-56s %9.1f ms %11.2f ns per date (both curves)\n", "full table build, per curve update", t_table, t_table * 1e6 / U);
+    ctx("scalar reverse scan, sensitivities only (no scenarios)", t_scan);
+
+    std::printf("\naccuracy\n");
+    std::printf("  scenario results vs scalar scan: max difference %.1e, relative to max(|value|, 1e4), checked on the last LRU cache run;\n", w);
+    std::printf("  this is the truncation error of the central difference at eps = 1e-5\n");
 }
