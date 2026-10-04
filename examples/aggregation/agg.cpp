@@ -6,8 +6,7 @@
 #include <string>
 #include <vector>
 #include <random>
-#include <experimental/simd>
-namespace stdx = std::experimental;
+#include <algorithm>
 static double now_ms(){ return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 int main(){
     const size_t N = 100000; const int K = 66;

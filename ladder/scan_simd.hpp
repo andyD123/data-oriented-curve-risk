@@ -1,6 +1,7 @@
 #pragma once
 // Grouped reverse scan: eight instruments per vector, backward walk over payment columns, stencil snapshots.
 // Output per group: [K_disc][8] then [K_proj][8], bucket-major, contiguous. Risk per unit forward bump.
+#include <cstdint>
 #include <vector>
 #include "lanes.hpp"
 #include "layout.hpp"
@@ -16,6 +17,11 @@ inline void store8(double* p, vec8 v) { if constexpr (policy == Store::streaming
 template <Store policy = Store::normal>
 inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencils& Sp, double* out)
 {
+    Sd.validate(); Sp.validate();
+    if (!L.refreshed || L.discount_grid != Sd.B || L.projection_grid != Sp.B)
+        throw std::invalid_argument("scan_grouped: refresh the date table for these stencils first");
+    if (!L.groups.empty() && (!out || reinterpret_cast<std::uintptr_t>(out) % 64 != 0))
+        throw std::invalid_argument("scan_grouped: output must be non-null and 64-byte aligned");
     const DateTable& T = L.table;
     const int Kd = Sd.K(), Kp = Sp.K();
     const size_t stride = L.stride(Kd, Kp);
@@ -63,7 +69,7 @@ inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencil
             vec8 x = vmul(amt, vbroadcast(T.D[di]));
             running = vadd(running, x);
             if (t >= BK) { if (Sd.open_last) beyond = vfma(x, vbroadcast(t - BK1), beyond); }   // beyond the last boundary
-            else interior = vfma(x, vbroadcast(t - Sd.B[k]), interior);                        // k == bucket(t) - 1 here
+            else if (t >= Sd.B.front()) interior = vfma(x, vbroadcast(t - Sd.B[k]), interior);                        // k == bucket(t) - 1 here
         }
         while (k >= 1) { emit(k + 1); suffix_cur = running; interior = vzero(); --k; }
         emit(1);

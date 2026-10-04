@@ -1,12 +1,15 @@
 #pragma once
-// Examples read and write data files by relative path. CMake defines LADDER_EXAMPLE_DIR as the example's build
-// directory (where its data files are copied); start there so a run works from any working directory, including an
-// IDE run configuration. Built without CMake, this does nothing and the example runs in the current directory.
+// CMake copies example inputs into a build directory. An explicit directory is
+// useful for isolated replays; without CMake or an override, retain the current one.
 #include <filesystem>
-#include <cstdio>
-inline void enter_example_dir() {
+#include <stdexcept>
+#include <string>
+inline void enter_example_dir(const char* directory = nullptr) {
 #if defined(LADDER_EXAMPLE_DIR)
-    std::error_code ec; std::filesystem::current_path(LADDER_EXAMPLE_DIR, ec);
-    if (ec) std::fprintf(stderr, "cannot enter %s: %s\n", LADDER_EXAMPLE_DIR, ec.message().c_str());
+    if (!directory) directory = LADDER_EXAMPLE_DIR;
 #endif
+    if (!directory) return;
+    std::error_code ec;
+    std::filesystem::current_path(directory, ec);
+    if (ec) throw std::runtime_error(std::string("cannot enter ") + directory + ": " + ec.message());
 }

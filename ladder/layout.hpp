@@ -44,11 +44,27 @@ struct GroupLayout {
     std::vector<Group> groups;
     DateTable table;
     double days_per_year = 365.0;
+    bool refreshed = false;
+    std::vector<double> discount_grid, projection_grid; // detect stale cached bucket indices
     size_t stride(int K_disc, int K_proj) const { return (size_t)(K_disc + K_proj) * LANES; }
 };
 
 inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double days_per_year = 365.0)
 {
+    if (!(days_per_year > 0.0) || !std::isfinite(days_per_year))
+        throw std::invalid_argument("build_layout: days_per_year must be finite and positive");
+    if (book.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        throw std::length_error("build_layout: too many instruments");
+    for (const auto& in : book) {
+        for (const auto& c : in.fixed)
+            if (!std::isfinite(c.amount)) throw std::invalid_argument("build_layout: non-finite fixed amount");
+        for (const auto& c : in.flt)
+            if (!std::isfinite(c.scale) || c.a_day > c.b_day)
+                throw std::invalid_argument("build_layout: invalid IBOR coupon");
+        for (const auto& c : in.ois)
+            if (!std::isfinite(c.N) || c.a_day > c.b_day)
+                throw std::invalid_argument("build_layout: invalid OIS coupon");
+    }
     GroupLayout L; L.days_per_year = days_per_year;
     std::unordered_map<int, std::vector<int>> by_sig;
     for (size_t i = 0; i < book.size(); ++i) by_sig[book[i].signature].push_back((int)i);
@@ -117,10 +133,19 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
 template <class DF, class PF>
 inline void refresh_table(GroupLayout& L, const Stencils& Sd, const Stencils& Sp, DF df, PF pf)
 {
+    L.refreshed = false; // a failed callback/validation must not leave a usable partial table
+    Sd.validate(); Sp.validate();
     DateTable& T = L.table;
     for (size_t i = 0; i < T.day.size(); ++i) {
-        double t = T.t[i]; T.D[i] = df(t); T.P[i] = pf(t); T.bo[i] = Sd.bucket(t); T.bp[i] = Sp.bucket(t);
+        double t = T.t[i];
+        if (!std::isfinite(t)) throw std::invalid_argument("refresh_table: non-finite time");
+        T.D[i] = df(t); T.P[i] = pf(t);
+        if (!(T.D[i] > 0.0) || !(T.P[i] > 0.0) || !std::isfinite(T.D[i]) || !std::isfinite(T.P[i]))
+            throw std::invalid_argument("refresh_table: factors must be finite and positive");
+        T.bo[i] = Sd.bucket(t); T.bp[i] = Sp.bucket(t);
     }
+    L.discount_grid = Sd.B; L.projection_grid = Sp.B;
+    L.refreshed = true;
 }
 
 } // namespace ladder

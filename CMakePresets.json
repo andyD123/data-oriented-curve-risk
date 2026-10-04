@@ -1,52 +1,134 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "release",
-      "displayName": "Release (std::experimental::simd)",
-      "description": "Default build: optimised, std::experimental::simd lane backend",
+      "displayName": "Release (STDX)",
       "binaryDir": "${sourceDir}/build/release",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "LADDER_LANES": "STDX" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LADDER_LANES": "STDX"
+      }
     },
     {
       "name": "release-avx512",
-      "inherits": "release",
-      "displayName": "Release (AVX-512 intrinsics)",
+      "displayName": "Release (AVX512)",
       "binaryDir": "${sourceDir}/build/release-avx512",
-      "cacheVariables": { "LADDER_LANES": "AVX512" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LADDER_LANES": "AVX512"
+      }
     },
     {
       "name": "release-avx2",
-      "inherits": "release",
-      "displayName": "Release (AVX2 intrinsics, no AVX-512)",
+      "displayName": "Release (AVX2)",
       "binaryDir": "${sourceDir}/build/release-avx2",
-      "cacheVariables": { "LADDER_LANES": "AVX2" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LADDER_LANES": "AVX2"
+      }
     },
     {
       "name": "release-portable",
-      "inherits": "release",
-      "displayName": "Release (portable, auto-vectorised loops)",
+      "displayName": "Release (PORTABLE)",
       "binaryDir": "${sourceDir}/build/release-portable",
-      "cacheVariables": { "LADDER_LANES": "PORTABLE" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LADDER_LANES": "PORTABLE"
+      }
     },
     {
       "name": "debug",
-      "displayName": "Debug (tests only; benchmark timings meaningless)",
+      "displayName": "Debug (STDX)",
       "binaryDir": "${sourceDir}/build/debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "LADDER_LANES": "STDX" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "LADDER_LANES": "STDX"
+      }
+    },
+    {
+      "name": "release-paper",
+      "inherits": "release-avx512",
+      "displayName": "Release (AVX-512 paper benchmarks)",
+      "binaryDir": "${sourceDir}/build/release-paper",
+      "cacheVariables": {
+        "LADDER_BUILD_PAPER_BENCHMARKS": "ON"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "release",          "configurePreset": "release" },
-    { "name": "release-avx512",   "configurePreset": "release-avx512" },
-    { "name": "release-avx2",     "configurePreset": "release-avx2" },
-    { "name": "release-portable", "configurePreset": "release-portable" },
-    { "name": "debug",            "configurePreset": "debug" }
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release-avx512",
+      "configurePreset": "release-avx512"
+    },
+    {
+      "name": "release-avx2",
+      "configurePreset": "release-avx2"
+    },
+    {
+      "name": "release-portable",
+      "configurePreset": "release-portable"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release-paper",
+      "configurePreset": "release-paper"
+    }
   ],
   "testPresets": [
-    { "name": "release",          "configurePreset": "release",          "output": { "outputOnFailure": true } },
-    { "name": "release-avx2",     "configurePreset": "release-avx2",     "output": { "outputOnFailure": true } },
-    { "name": "release-portable", "configurePreset": "release-portable", "output": { "outputOnFailure": true } }
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-avx512",
+      "configurePreset": "release-avx512",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-avx2",
+      "configurePreset": "release-avx2",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-portable",
+      "configurePreset": "release-portable",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-paper",
+      "configurePreset": "release-paper",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

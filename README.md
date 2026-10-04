@@ -1,95 +1,168 @@
-# ladder — bucketed curve risk by reverse scan
+# data-oriented-curve-risk
 
-Companion code for *Reworking the Inner Loop: Convention-Manufactured Computational Shape, Reverse Scans,
-and the Memory Wall in Rates Risk* (A. Drakeford, Wilmott Magazine, 2026).
+C++20 companion sources for Andrew Drakeford's draft **Reworking the Inner Loop**.
+The SSRN manuscript is the technical draft; the Wilmott article is the shorter draft.
+This repository does not assert that either has been published.
 
-Risk to bucket forward bumps (Hagan box stencils) for any leg replicated into unit cashflows, computed by one
-forward and one backward pass over date-sorted cashflows — no loop over buckets — and, grouped eight
-instruments per AVX-512 vector with a shared date table, at a few nanoseconds per sensitivity.
+The library computes first-order sensitivity to interval-forward **waves**. The wave
+definition and its separation from curve stripping are due to Hagan. The contribution
+here is the data-oriented organisation: shared dates, grouped instruments and reverse scans.
 
-## Layout
+## Build and open in CLion
 
-```
-ladder/                header-only, C++20, namespace ladder
-  stencil.hpp          Stencils: boundaries + box profile. overlap(k, t), bucket(t). Pure geometry.
-  unit_cashflow.hpp    UnitCashflow {t, x}; ProjectionTerm {t_pay, a, b, w}
-  scan.hpp             scan_discount(), scan_projection()   scalar scans, risk per unit forward bump
-  replicate.hpp        fixed / IBOR / compounded-OIS legs -> unit cashflows (discount factors via callables)
-  layout.hpp           InstrumentSpec -> GroupLayout (eight per group by schedule signature) + DateTable
-  scan_simd.hpp        scan_grouped<Store::normal|streaming>()  eight-lane column walk; gather()
-  lanes.hpp            the vector primitive set (eleven functions), four backends selected at compile time:
-                       STDX std::experimental::simd (default); AVX512 and AVX2 intrinsics; PORTABLE plain loops
-                       relying on auto-vectorisation (no intrinsics, any target); AUTO picks from the target flags
-tests/test_ladder.cpp  scan vs explicit adjoint (1e-16), finite difference eps^2 convergence (ratio 4.00),
-                       OIS lag-0 telescoping, exact zeros past maturity, grouped vs scalar (1e-15),
-                       streaming == normal stores (bitwise)
-examples/
-  quantlib_reconcile/  QuantLib 1.33's MulticurveBootstrapping + Bonds examples, LogLinear curves,
-                       node bumps; seven instruments reconciled to the finite-difference floor
-  hagan_waves/         same instruments on the shipped *cubic* curves with box-wave risk: scan vs QuantLib
-                       wave bumps (eps^2 convergence), vs an explicit adjoint (rounding), hedge solve
-  benchmark_paper/     the paper's §9 configuration exactly (bonds + vanilla swaps, standalone kernel, 50.9 ms)
-  benchmark/           library kernel on a broader book (bonds + IBOR swaps + OIS swaps, 62.7 ms); reported separately
-  aggregation/         contiguous ladders vs per-instrument maps (1.7 ms vs 320–373 ms at 100k x 66)
+Open the repository root: `CMakeLists.txt` is here, not inside an archive or wrapper directory.
+A C++20 compiler and CMake 3.16 or newer are required. No QuantLib installation or network
+fetch is needed for the default build.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel 2
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-## Build
+The default `AUTO` backend uses the compiler target's AVX-512/AVX2 support, otherwise
+portable loops. It does not silently enable host-native instructions. Select an ISA
+only when the machine running the binary supports it:
 
-```
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/test_ladder
-cmake -S . -B build-avx2 -DLADDER_LANES=AVX2 && cmake --build build-avx2 && ./build-avx2/test_ladder
-cmake -S . -B build-port -DLADDER_LANES=PORTABLE && cmake --build build-port && ./build-port/test_ladder
-```
-GCC 13 or later. All backends pass the same tests on AVX-512, AVX2-only and SSE2-only targets. Measured at 100k
-instruments on one Sapphire Rapids core, streaming stores: AVX512 9.9 ms, AVX2 9.6 ms, STDX 8.4–12.0 ms depending on
-target flags, PORTABLE 21–22 ms. Streaming stores exist only on the x86 intrinsics backends; the others fall back to
-normal stores and lose that gain. The examples under `quantlib_reconcile/` and `hagan_waves/` need QuantLib C++
-(`apt install libquantlib0-dev` gives 1.33 on Ubuntu 24.04) and numpy; each has its own `run.sh` or Makefile.
-
-## Opening the project
-
-`CMakePresets.json` defines the build profiles — `release` (std::experimental::simd), `release-avx512`,
-`release-avx2`, `release-portable`, `debug` — and CLion, VS Code (CMake Tools) and Visual Studio pick them up on open.
-From a shell:
-
-```
-cmake --preset release && cmake --build --preset release && ctest --preset release
+```sh
+cmake -S . -B build-avx2 -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=AVX2
+cmake -S . -B build-avx512 -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=AVX512
+cmake -S . -B build-portable -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE
+cmake -S . -B build-stdx -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=STDX -DLADDER_NATIVE_ARCH=ON
 ```
 
-**CLion.** Open the repository folder. The presets appear as CMake profiles, and the shared run configurations in
-`.run/` appear in the run menu with their arguments set: `test_ladder`, `bench_paper 500k (paper section 9)`,
-`scenario_bench 100k (LRU date cache)`, `adjoint_bench 500k`, `bench_library 500k (seasoned book)`, `aggregation`,
-`scan_wave`, and the QuantLib harnesses. Each example starts in its own build directory, where its data files are
-copied, so no working directory needs setting.
+`STDX` requires `<experimental/simd>`. `LADDER_NATIVE_ARCH=ON` is opt-in and produces a
+host-specific binary. Explicit AVX backends receive the appropriate compiler flags;
+unknown backend names are configuration errors. Normal/streaming store equivalence is
+tested within each configuration, not claimed as cross-backend bitwise reproducibility.
+STDX can use x86 streaming stores when its target supports them; portable loops cannot.
 
-The code needs GCC 13+ with libstdc++ (`std::experimental::simd`, `std::aligned_alloc`); MSVC has neither. On Windows,
-add a WSL toolchain in CLion (`Settings → Build, Execution, Deployment → Toolchains → + → WSL`, Ubuntu 24.04 with
-`build-essential cmake libquantlib0-dev`) and put it first; the presets then build under it. The QuantLib targets are
-created only when QuantLib is found.
+Default targets are `test_ladder`, `test_boundaries`, `bench_library`, `aggregation` and `scan_wave`.
+CTest runs the original suite, independent boundary/oracle tests and a small benchmark
+correctness gate. With Python 3 installed it also runs an isolated wave-fixture replay
+and malformed-input checks (standard library only; four CTest tests in total).
+`BUILD_TESTING=OFF` omits tests; `LADDER_BUILD_EXAMPLES=OFF` omits examples.
 
-## The algorithm in one place
+For example, on a single-configuration generator:
 
-`ladder/scan.hpp`:
+```sh
+./build/examples/benchmark/bench_library 20000 0 7
 ```
-forward  pass: interior[k] += x_i * (t_i - B[k-1])          one FMA per unit cashflow
-backward pass: running    += x_i;  at each boundary B[k]: suffix[k] = running
-combine:       dPV/ddelta_k = -( interior[k] + len(k) * suffix[k] )
+
+Arguments are instrument count, whether to run the repeated-bump baseline, repetitions,
+and an optional curve-data path. Examples enter their own build directories, where CMake
+copies the bundled data, so CLion runs need no working-directory setting. Invalid arguments,
+missing/malformed data and failed numerical comparisons return a non-zero exit code.
+
+The existing `CMakePresets.json` profiles and shared `.run/` CLion configurations are retained.
+With CMake 3.21 or newer, use `cmake --preset release`, `cmake --build --preset release`
+and `ctest --preset release`. Presets `release`, `release-avx512`, `release-avx2`,
+`release-portable` and `debug` retain their names; the release/debug presets use STDX.
+Choose `release-portable` when `<experimental/simd>` is unavailable. WSL or MinGW
+with a suitable GCC/libstdc++ toolchain remains the route for STDX/paper examples on Windows.
+
+For the historical AVX-512 paper, adjoint and LRU scenario benchmarks, select the new
+`release-paper` preset (on supported x86 hardware), or set
+`-DLADDER_BUILD_PAPER_BENCHMARKS=ON`. This exposes `bench_paper`, `adjoint_bench`
+and `scenario_bench` with the existing shared run configurations. Keeping these optional
+prevents their eight-wide native-SIMD assumption from breaking ordinary portable builds.
+They retain their historical input-handling/benchmark assumptions, not the new strict
+conformance contract of `bench_library`.
+
+`scan_wave [data-and-output-directory]` optionally selects a separate replay directory;
+its no-argument CLion run uses build-directory copies. The CTest replay always selects
+a temporary directory. No generated result needs to overwrite a source-tree fixture.
+
+## Library and mathematical contract
+
+`ladder/` is header-only. The CMake interface target is `ladder` (alias `ladder::ladder`).
+`Stencils`, `UnitCashflow`, `ProjectionTerm`, scalar scans, replication helpers, grouped
+layout and grouped scans remain in namespace `ladder`.
+
+For bounded wave k, `overlap = clamp(t - B[k-1], 0, B[k] - B[k-1])`.
+For `open_last=true`, the final overlap is `max(t - B[K-1], 0)`.
+Discount risk is `-sum(x * overlap)`; projection risk is `sum(w * (overlap(b)-overlap(a)))`.
+A projection coupon wholly beyond the start of an open final wave still contributes
+`w*(b-a)`. It does not have the zero downstream tail of a bounded wave.
+
+Results are analytic first derivatives per unit forward shift. Multiplying by `1e-4`
+gives linearised 1 bp risk, not exact finite 1 bp scenario P&L. For products/ratios,
+generalised unit cashflows are first-order signed weights `dV/dlog D(t)`; they do not
+by themselves determine higher derivatives or an exact finite-shock decomposition.
+Floating-point summation and contraction can introduce rounding differences.
+
+`scan_discount` requires time-sorted, finite records and an output buffer of K doubles.
+`scan_projection` requires finite terms with `a <= b`. Stencils must have at least two
+finite, strictly increasing boundaries. Entry points reject these invalid inputs;
+low-level geometry helpers require a valid stencil and valid wave indices.
+
+`build_layout` unions members' payment dates and keys coupons by `(pay,a,b)`; missing
+lane entries are zero. Each layout uses **one discount/projection curve pair**, a common
+time axis and its supplied day scale. A signature is not a separate curve handle.
+Adapters for curves with different reference dates must convert times explicitly.
+Call `refresh_table` before `scan_grouped`, and again after changing the risk grid or
+curve values. Factors must be finite and positive. Output has
+`groups * (K_discount + K_projection) * 8` doubles and must be 64-byte aligned.
+`ladder/aligned_memory.hpp` provides matching aligned allocation/deallocation.
+Public layout internals must not be manually corrupted; buffer lengths remain caller obligations.
+
+Preparation is separate from kernel work. The current scalar discount implementation
+uses a binary-search bucket lookup per record: **O(N log K + K)** once sorted, not an
+unqualified O(N+K) algorithm. Grouped discount column walks are linear in columns plus
+waves per group; coupon preparation and projection coupon/wave overlaps add their own
+work. Layout construction, sorting and curve/date-table refresh are not free.
+
+## Supported formulas and QuantLib examples
+
+The replication helpers implement the displayed fixed, forecast IBOR-ratio and fully
+forecast compounded-OIS-ratio formulas. They do not inspect calendars, historical
+fixings, coupon pricers, averaging/lookback/lockout conventions, optionality or gearing.
+A caller must incorporate gearing into the scale, separate fixed coupons and supply
+correct forecast periods. Arbitrary seasoned OIS coupons are not supported merely by
+passing their full start/end dates to the simple ratio helper.
+
+Optional reference generators target the existing QuantLib 1.33 examples:
+
+```sh
+cmake -S . -B build-ql -DCMAKE_BUILD_TYPE=Release -DLADDER_BUILD_QUANTLIB=ON
+cmake --build build-ql --config Release --parallel 2
 ```
-The condition for exactness is that a stencil's bump leaks nothing outside its own interval; then every
-discount factor past it moves by one factor and the tail factorises. Box stencils satisfy it on any pricing
-curve (`examples/hagan_waves`). Node bumps of a cubic spline do not, and the scan correctly disagrees
-with them (`examples/quantlib_reconcile`, Cubic variant).
 
-## Recorded numbers (one Sapphire Rapids core, 2.1 GHz, VM)
+This provides `ql_waves`, `ql_examples` and `scan_reconcile`. `AUTO` (the default)
+enables them when QuantLib is found; `ON` requires it and fails clearly if absent;
+`OFF` disables them. It never downloads dependencies automatically. Generators write
+into their example build directories, not the source tree; keep fresh outputs separate
+from immutable recorded evidence.
+The historical example scripts additionally use NumPy. Their printed reports alone
+are not substitutes for executable conformance gates.
 
-`examples/benchmark`, 500,000 instruments, stencils 30 + 36, 264 MB output:
+`scan_wave` and its CTest replay consume recorded weights and recorded finite differences.
+**Replay is not a freshly bootstrapped QuantLib reconciliation.** The current optional
+harness is a research example, not a general production adapter: per-coupon fixing/pricer
+semantics, today's/historical fixings, seasoned OIS treatment and engine-level valuations
+still require a fresh full audit. The zero-coupon example is intentionally retained at
+redemption 100, unlike the original QuantLib Bonds example's 116.92; it is an adaptation,
+not an unchanged copy. The two curve reference dates are also not interchangeable.
+See `VALIDATION.md` for the checks actually performed and outstanding cases.
 
-| variant | time | ns / sensitivity |
-|---|---|---|
-| bump-and-reprice (AoS, virtual npv, central differences) | 49,599 ms | 1,503 |
-| scalar scan per instrument | 407 ms | 12.3 |
-| eight-lane grouped, normal stores | 72 ms | 2.19 |
-| eight-lane grouped, streaming stores | 63 ms | 1.90 |
-| date-table refresh per curve update | 0.12 ms | — |
+## Evidence and benchmark generations
 
-Streaming-store floor for 264 MB on this core: ~15 ms. Reconciliation numbers are in each example's README.
+The fresh review evidence is in `VALIDATION.md`. Linux GCC/Clang configurations were
+executed; Windows/MSVC and Apple/ARM were not executed in that review. The default build
+no longer imposes GNU/x86 flags, and its core tests/benchmark use C++ aligned new/delete,
+but that is not a claim of tested portability on those unexecuted systems.
+
+Existing `recorded_*` files remain historical evidence, not results of this review.
+Keep the standalone `examples/benchmark_paper` workload separate from the broader
+`examples/benchmark` library/OIS workload and its seasoned-book revision. The historical
+paper's approximately 50.9 ms, older OIS-inclusive approximately 62.7 ms and later
+seasoned-library approximately 51.1 ms refer to different runs/configurations.
+The paper benchmarks retain separate platform/dependency assumptions and are optional
+root targets; the aggregation example is a default target (not a CTest benchmark run).
+
+For the historical 500,000-instrument paper layout, logical output is 264,000,000 bytes;
+64,034 padded eight-lane groups occupy 270,479,616 bytes. A 270 MiB write-only experiment
+is a different byte count. Neither old timings nor their workloads were silently replaced.
+No automated CI workflow or expensive hardware sweep was added by this review.
+
+QuantLib-derived example material retains the notices in `THIRD_PARTY_NOTICES.md`.

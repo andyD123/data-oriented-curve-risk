@@ -1,9 +1,13 @@
 #include "../example_dir.hpp"
+#include "ladder/aligned_memory.hpp"
 // Two-curve bucketed-risk benchmark on the curves of QuantLib's MulticurveBootstrapping example
 // (node discount factors in quantlib_example_curves.txt, written by examples/quantlib_reconcile).
 //   BASE  bump-and-reprice: AoS instruments, virtual npv, central differences on every stencil of both curves
 //   SCAN  scalar reverse scan per instrument (ladder/scan.hpp) on unit cashflows
 //   GRP   eight instruments per vector, shared date table, streaming output (ladder/scan_simd.hpp)
+#include <charconv>
+#include <fstream>
+#include <string_view>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -24,11 +28,31 @@ struct Curve {                                             // log-linear on the 
     double df(double t) const { int k = S.bucket(t); double a = (t - S.B[k-1]) / S.len(k); return std::exp(logD[k-1] + a * (logD[k] - logD[k-1])); }
     Curve bumped(int k, double delta) const { Curve c = *this; for (int j = k; j <= S.K(); ++j) c.logD[j] -= delta * S.len(k); return c; }   // box bump of stencil k
 };
+#ifndef LADDER_CURVE_DATA_FILE
+#define LADDER_CURVE_DATA_FILE "quantlib_example_curves.txt"
+#endif
 static void load_curves(const char* path, Curve& d, Curve& p) {
-    FILE* in = std::fopen(path, "r"); int nc; (void)std::fscanf(in, "%d", &nc);
-    for (Curve* c : {&d, &p}) { char nm[16]; int n; (void)std::fscanf(in, "%15s %d", nm, &n); c->S.B.resize(n); c->logD.resize(n);
-        for (int i = 0; i < n; ++i) { double t, D; (void)std::fscanf(in, "%lf %lf", &t, &D); c->S.B[i] = t; c->logD[i] = std::log(D); } }
-    std::fclose(in);
+    std::ifstream in(path); int nc;
+    if (!in || !(in >> nc) || nc != 2) throw std::runtime_error("cannot read two curves from " + std::string(path));
+    for (Curve* c : {&d, &p}) {
+        std::string name; int n;
+        if (!(in >> name >> n) || n < 2 || n > 100000) throw std::runtime_error("invalid curve header");
+        c->S.B.resize(n); c->logD.resize(n);
+        for (int i=0; i<n; ++i) {
+            double t, D;
+            if (!(in >> t >> D) || !std::isfinite(t) || !std::isfinite(D) || !(D > 0.))
+                throw std::runtime_error("invalid curve time/discount factor");
+            c->S.B[i]=t; c->logD[i]=std::log(D);
+        }
+        c->S.validate();
+    }
+}
+static size_t argument(const char* text, size_t lo, size_t hi) {
+    std::string_view s(text); size_t value=0;
+    auto [end, ec]=std::from_chars(s.data(), s.data()+s.size(), value);
+    if (ec != std::errc{} || end != s.data()+s.size() || value < lo || value > hi)
+        throw std::invalid_argument("usage: bench [N=1..10000000] [baseline=0|1] [reps=1..1000] [curve_file]");
+    return value;
 }
 
 // ---- BASE: array-of-structs instruments with virtual pricing
@@ -43,11 +67,15 @@ struct Swap : Instrument { std::vector<FixedFlow> fixed; std::vector<FloatFlow> 
 
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
-int main(int argc, char** argv)
+int main(int argc, char** argv) try
 {
     enter_example_dir();
-    size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000; int run_base = argc > 2 ? std::atoi(argv[2]) : 1; int reps = argc > 3 ? std::atoi(argv[3]) : 3;
-    Curve cd, cp; load_curves("quantlib_example_curves.txt", cd, cp);
+    if (argc > 5) throw std::invalid_argument("too many benchmark arguments");
+    size_t N = argc > 1 ? argument(argv[1],1,10000000) : 100000;
+    int run_base = argc > 2 ? static_cast<int>(argument(argv[2],0,1)) : 1;
+    int reps = argc > 3 ? static_cast<int>(argument(argv[3],1,1000)) : 3;
+    Curve cd, cp; load_curves(argc > 4 ? argv[4] : LADDER_CURVE_DATA_FILE, cd, cp);
+    bool valid = true;
     const int Kd = cd.S.K(), Kp = cp.S.K();
     auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };
 
@@ -70,7 +98,7 @@ int main(int argc, char** argv)
             sw->fixed = in.fixed; sw->flt = in.flt; sw->ois = in.ois; aos.push_back(std::move(sw)); }
         ncf += in.fixed.size() + in.flt.size() + in.ois.size();
     }
-    std::printf("N=%zu instruments (bonds / IBOR swaps / OIS swaps), %.1f cashflows each, stencils %d+%d, output %.0f MB\n", N, (double)ncf / N, Kd, Kp, N * (Kd + Kp) * 8 / 1e6);
+    std::printf("N=%zu instruments (bonds / IBOR swaps / OIS swaps), %.1f cashflows each, stencils %d+%d, logical output %.0f MB\n", N, (double)ncf / N, Kd, Kp, N * (Kd + Kp) * 8 / 1e6);
 
     // ---- SCAN: replicate once (layout), scan per run
     double t0 = now_ms();
@@ -89,13 +117,17 @@ int main(int argc, char** argv)
     t0 = now_ms(); GroupLayout L = build_layout(book, DPY); double t_layout = now_ms() - t0;
     double best_tab = 1e30, best_n = 1e30, best_s = 1e30;
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); refresh_table(L, cd.S, cp.S, df, pf); best_tab = std::min(best_tab, now_ms() - t0); }
-    double* out = (double*)std::aligned_alloc(64, L.groups.size() * L.stride(Kd, Kp) * sizeof(double));
+    double* out = (double*)ladder::allocate_aligned(L.groups.size() * L.stride(Kd, Kp) * sizeof(double));
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::normal>(L, cd.S, cp.S, out); best_n = std::min(best_n, now_ms() - t0); }
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::streaming>(L, cd.S, cp.S, out); best_s = std::min(best_s, now_ms() - t0); }
     double worst = 0; std::vector<double> buf(Kd + Kp);
     for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) { int i = L.groups[gi].inst[l]; gather(L, Kd, Kp, out, (int)gi, l, buf.data());
         double scale = 1.0; for (int k = 0; k < Kd; ++k) scale = std::max(scale, std::fabs(sd[i*Kd+k])); for (int k = 0; k < Kp; ++k) scale = std::max(scale, std::fabs(sp[i*Kp+k]));
         for (int k = 0; k < Kd; ++k) worst = std::max(worst, std::fabs(buf[k] - sd[i*Kd+k]) / scale); for (int k = 0; k < Kp; ++k) worst = std::max(worst, std::fabs(buf[Kd+k] - sp[i*Kp+k]) / scale); }
+    for (double v : sd) valid = valid && std::isfinite(v);
+    for (double v : sp) valid = valid && std::isfinite(v);
+    for (size_t j=0; j<L.groups.size()*L.stride(Kd,Kp); ++j) valid = valid && std::isfinite(out[j]);
+    valid = valid && std::isfinite(worst) && worst < 1e-9;
     std::printf("GRP vs SCAN max rel diff %.1e\n", worst);
 
     // ---- BASE
@@ -105,7 +137,11 @@ int main(int argc, char** argv)
         for (int k = 1; k <= Kp; ++k) { Curve up = cp.bumped(k, eps), dn = cp.bumped(k, -eps); for (size_t i = 0; i < N; ++i) bp[i*Kp+k-1] = (aos[i]->npv(cd, up) - aos[i]->npv(cd, dn)) / (2*eps); }
         t_base = now_ms() - t0;
         double w = 0; for (size_t i = 0; i < N; ++i) { for (int k = 0; k < Kd; ++k) { double a = bd[i*Kd+k], b = sd[i*Kd+k], s = std::max(std::fabs(a), std::fabs(b)); if (s > 1e4) w = std::max(w, std::fabs(a-b)/s); } }
-        std::printf("BASE vs SCAN max rel diff %.1e (central difference, values > 1e4)\n", w); }
+        for (size_t i=0; i<bd.size(); ++i)
+            valid = valid && std::isfinite(bd[i]) && std::fabs(bd[i]-sd[i]) <= 1e-2 + 1e-6*std::max(std::fabs(bd[i]),std::fabs(sd[i]));
+        for (size_t i=0; i<bp.size(); ++i)
+            valid = valid && std::isfinite(bp[i]) && std::fabs(bp[i]-sp[i]) <= 1e-2 + 1e-6*std::max(std::fabs(bp[i]),std::fabs(sp[i]));
+        std::printf("BASE vs SCAN max rel diff %.1e (discount values > 1e4; both ladders gated)\n", w); }
 
     const double nout = (double)N * (Kd + Kp);
     auto row = [&](const char* name, double ms) { std::printf("%-46s %10.2f ms %9.3f ns/output %10s\n", name, ms, ms * 1e6 / nout, t_base > 0 ? (std::to_string((int)std::lround(t_base / ms)) + "x").c_str() : "-"); };
@@ -117,5 +153,10 @@ int main(int argc, char** argv)
     row("GRP  8-lane, normal stores", best_n);
     row("GRP  8-lane, streaming stores", best_s);
     { size_t live = 0; for (auto& g : L.groups) live += g.n_valid; std::printf("one-off: replication %.0f ms, group layout %.0f ms; unique dates %zu; groups %zu; lane occupancy %.1f%%\n", t_rep, t_layout, L.table.day.size(), L.groups.size(), 100.0 * live / (L.groups.size() * LANES)); }
-    std::free(out);
+    std::printf("storage: logical %zu bytes; padded %zu bytes\n", N * (Kd + Kp) * sizeof(double), L.groups.size() * L.stride(Kd,Kp) * sizeof(double));
+    ladder::free_aligned(out);
+    std::printf("correctness gate: %s\n", valid ? "PASS" : "FAIL");
+    return valid ? 0 : 1;
+} catch (const std::exception& e) {
+    std::fprintf(stderr, "bench: %s\n", e.what()); return 1;
 }

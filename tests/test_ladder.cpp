@@ -1,3 +1,4 @@
+#include "ladder/aligned_memory.hpp"
 // Tests for ladder/: scalar scan, grouped SIMD scan, replication, exactness.
 #include <cmath>
 #include <cstdio>
@@ -96,7 +97,7 @@ int main()
     GroupLayout L = build_layout(book, DPY);
     refresh_table(L, cd.S, cp.S, df, pf);
     std::vector<double> outn(L.groups.size() * L.stride(Kd, Kp)), outs(outn.size());
-    double* on = (double*)std::aligned_alloc(64, outn.size() * sizeof(double)); double* os = (double*)std::aligned_alloc(64, outs.size() * sizeof(double));
+    double* on = (double*)ladder::allocate_aligned(outn.size() * sizeof(double)); double* os = (double*)ladder::allocate_aligned(outs.size() * sizeof(double));
     scan_grouped<Store::normal>(L, cd.S, cp.S, on); scan_grouped<Store::streaming>(L, cd.S, cp.S, os);
     double worst_g = 0, worst_s = 0; std::vector<double> buf(Kd + Kp), sd(Kd), sp(Kp);
     for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) {
@@ -111,7 +112,7 @@ int main()
     CHECK(worst_s == 0.0, "streaming vs normal store differ: %.2e", worst_s);
     { size_t slots = L.groups.size() * LANES, live = 0; for (auto& g : L.groups) live += g.n_valid; std::printf("groups %zu, lane occupancy %.1f%% (mixed seasoning per group)\n", L.groups.size(), 100.0 * live / slots); }
     std::printf("grouped vs scalar max rel %.1e (summation order; FMA contraction); streaming == normal: %s\n", worst_g, worst_s == 0.0 ? "yes" : "NO");
-    std::free(on); std::free(os);
+    ladder::free_aligned(on); ladder::free_aligned(os);
 
     // ---- 4. cashflows beyond the last boundary: capped and open last stencil, scalar vs grouped vs direct overlap adjoint
     for (int open = 0; open < 2; ++open) {
@@ -127,7 +128,7 @@ int main()
             sort_by_time(u2[i]);
         }
         GroupLayout L2 = build_layout(book2, DPY); refresh_table(L2, Sd2, Sp2, df, pf);
-        double* og = (double*)std::aligned_alloc(64, L2.groups.size() * L2.stride(Kd, Kp) * sizeof(double));
+        double* og = (double*)ladder::allocate_aligned(L2.groups.size() * L2.stride(Kd, Kp) * sizeof(double));
         scan_grouped<Store::normal>(L2, Sd2, Sp2, og);
         double w_sg = 0, w_sa = 0; std::vector<double> b2(Kd + Kp), sd2(Kd), sp2(Kp);
         for (size_t gi = 0; gi < L2.groups.size(); ++gi) for (int l = 0; l < L2.groups[gi].n_valid; ++l) {
@@ -139,7 +140,7 @@ int main()
             for (int k = 1; k <= Kp; ++k) { double a = 0; for (auto& q : p2[i]) a += q.w * (Sp2.psi(k, q.a) - Sp2.psi(k, q.b));
                 w_sa = std::max(w_sa, std::fabs(a - sp2[k-1]) / scale); w_sg = std::max(w_sg, std::fabs(b2[Kd+k-1] - sp2[k-1]) / scale); }
         }
-        std::free(og);
+        ladder::free_aligned(og);
         CHECK(w_sa < 1e-13, "beyond-last-boundary (%s): scalar vs direct overlap adjoint %.2e", open ? "open" : "capped", w_sa);
         CHECK(w_sg < 1e-9,  "beyond-last-boundary (%s): grouped vs scalar %.2e", open ? "open" : "capped", w_sg);
         std::printf("cashflows beyond B[K], %s last stencil: scalar vs adjoint %.1e, grouped vs scalar %.1e\n", open ? "open" : "capped", w_sa, w_sg);

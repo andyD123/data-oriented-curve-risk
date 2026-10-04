@@ -1,5 +1,9 @@
 #pragma once
-// Leg -> unit cashflows. Discount factors are supplied by callables; the library knows no curve.
+// Supported algebraic leg formulas -> first-order signed risk weights.
+// Discount factors are supplied by callables; the library knows no curve, calendar,
+// fixing history, coupon pricer or option model. Adapters must supply the actual
+// forecast periods and separate already-fixed amounts. OIS below supports only
+// the displayed fully-forecast discount-ratio formula, not arbitrary OIS conventions.
 #include <vector>
 #include "unit_cashflow.hpp"
 

@@ -1,5 +1,7 @@
 #pragma once
-// Unit cashflows: every leg is replicated into dated present values with sign. The scan sees only these.
+// Unit cashflows are signed first-order risk weights dV/dlog D(t).
+// For a fixed amount they equal its present value. Product/ratio weights are not
+// an exact finite-shock cashflow decomposition; the scan computes first derivatives.
 namespace ladder {
 
 struct UnitCashflow { double t; double x; };           // present value x at time t
