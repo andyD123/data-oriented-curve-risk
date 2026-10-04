@@ -1,111 +1,74 @@
-# Data-Oriented Curve Risk
+# ladder — bucketed curve risk by reverse scan
 
-A standalone reproducible example of data-oriented interest-rate curve risk using
-**box-wave sensitivities**, a **reverse scan**, deal-axis SIMD, and **QuantLib reconciliation**.
+Companion code for *Reworking the Inner Loop: Convention-Manufactured Computational Shape, Reverse Scans,
+and the Memory Wall in Rates Risk* (A. Drakeford, Wilmott Magazine, 2026).
 
-The project separates the finance reference from the risk kernel:
-
-1. `quantlib_reference` builds QuantLib 1.33's Eonia and Euribor 6M multi-curve example
-   with its shipped cubic pricing interpolation.
-2. A `BoxShifted` term structure overlays a local instantaneous-forward bump on one
-   pillar interval. QuantLib reprices the instruments under `+eps/-eps` shifts and writes
-   the finite-difference reference ladder.
-3. The same QuantLib cashflows are normalised to dated **unit cashflows** and written as
-   flat data.
-4. `scan_wave` contains no QuantLib types and no pricing curve. It consumes only bucket
-   boundaries and unit cashflows and evaluates the whole ladder with the reverse scan.
-5. `compare.py` verifies `O(eps^2)` convergence of QuantLib central differences to the scan;
-   `aad_check.py` differentiates the same wave valuation without a step size and checks
-   agreement at rounding.
-
-The point is representational: QuantLib remains the source of truth for schedules,
-coupons, compounding, curve construction and valuation, while the hot risk calculation
-operates on the smaller data representation exposed by those conventions.
-
-## Risk convention
-
-The implementation differentiates with respect to an **instantaneous forward-rate shift**
-`delta_k` on `[B[k-1], B[k])`:
-
-```text
-D_delta(t) = D(t) * exp(-delta_k * overlap_k(t))
-overlap_k(t) = clamp(t - B[k-1], 0, B[k] - B[k-1])
-```
-
-For a discounted unit cashflow `x_i`, the discount-curve ladder is therefore
-
-```text
-dPV/ddelta_k = -[
-    sum_{B[k-1] <= t_i < B[k]} x_i (t_i - B[k-1])
-  + (B[k]-B[k-1]) sum_{t_i >= B[k]} x_i
-]
-```
-
-This is the convention used by `ladder/stencil.hpp`, `ladder/scan.hpp`, `BoxShifted`, and
-all recorded reconciliation files.
-
-## Build with QuantLib installed
-
-Ubuntu 24.04 packages QuantLib 1.33:
-
-```bash
-sudo apt install build-essential cmake libquantlib0-dev python3 python3-numpy
-./run.sh
-```
-
-Or explicitly:
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-cmake --build build --target run_reconciliation
-cmake --build build --target run_hedge       # optional; numpy required
-```
-
-On Windows, point CMake at a QuantLib installation in the usual way (`CMAKE_PREFIX_PATH`
-or `QuantLib_DIR`) and run `run.ps1`.
-
-## Reproducible container
-
-The supplied `Dockerfile` pins the environment to Ubuntu 24.04, whose repository package is
-QuantLib 1.33:
-
-```bash
-docker build -t data-oriented-curve-risk .
-docker run --rm data-oriented-curve-risk
-```
-
-## Build without QuantLib
-
-The geometry-only scan can be built independently:
-
-```bash
-cmake -S . -B build-scan \
-  -DCURVE_RISK_BUILD_QUANTLIB_REFERENCE=OFF \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build-scan -j
-```
-
-This mode tests the data-oriented kernel but does **not** regenerate the finance reference.
-
-## Expected reconciliation
-
-Recorded QuantLib 1.33 outputs are included under `recorded/`. On the seven-instrument
-cubic-curve set, the scan and the explicit adjoint agree at roughly `1e-18 ... 1e-16`
-relative (zero-coupon bitwise), while QuantLib central finite differences converge to the
-scan at the expected factor of about four per halving of `eps` until rounding dominates.
-
-`recorded/benchmark_500k_library.txt` records the current library benchmark: 500,000
-instruments, 66 sensitivities each and 264 MB of output, with the 8-lane streaming scan at
-62.68 ms / 1.899 ns per sensitivity on the recorded Sapphire Rapids-class run.
+Risk to bucket forward bumps (Hagan box stencils) for any leg replicated into unit cashflows, computed by one
+forward and one backward pass over date-sorted cashflows — no loop over buckets — and, grouped eight
+instruments per AVX-512 vector with a shared date table, at a few nanoseconds per sensitivity.
 
 ## Layout
 
-```text
-include/ladder/          Reverse-scan, stencil, layout and SIMD support
-src/quantlib_reference.cpp
-                        QuantLib finance reference and bump/reprice harness
-src/scan_wave.cpp       Data-oriented reverse-scan executable
-scripts/                Reconciliation, AAD and hedge checks
-recorded/               Recorded QuantLib outputs and benchmark evidence
 ```
+ladder/                header-only, C++20, namespace ladder
+  stencil.hpp          Stencils: boundaries + box profile. overlap(k, t), bucket(t). Pure geometry.
+  unit_cashflow.hpp    UnitCashflow {t, x}; ProjectionTerm {t_pay, a, b, w}
+  scan.hpp             scan_discount(), scan_projection()   scalar scans, risk per unit forward bump
+  replicate.hpp        fixed / IBOR / compounded-OIS legs -> unit cashflows (discount factors via callables)
+  layout.hpp           InstrumentSpec -> GroupLayout (eight per group by schedule signature) + DateTable
+  scan_simd.hpp        scan_grouped<Store::normal|streaming>()  eight-lane column walk; gather()
+  lanes.hpp            the vector primitive set (eleven functions), four backends selected at compile time:
+                       STDX std::experimental::simd (default); AVX512 and AVX2 intrinsics; PORTABLE plain loops
+                       relying on auto-vectorisation (no intrinsics, any target); AUTO picks from the target flags
+tests/test_ladder.cpp  scan vs explicit adjoint (1e-16), finite difference eps^2 convergence (ratio 4.00),
+                       OIS lag-0 telescoping, exact zeros past maturity, grouped vs scalar (1e-15),
+                       streaming == normal stores (bitwise)
+examples/
+  quantlib_reconcile/  QuantLib 1.33's MulticurveBootstrapping + Bonds examples, LogLinear curves,
+                       node bumps; seven instruments reconciled to the finite-difference floor
+  hagan_waves/         same instruments on the shipped *cubic* curves with box-wave risk: scan vs QuantLib
+                       wave bumps (eps^2 convergence), vs an explicit adjoint (rounding), hedge solve
+  benchmark_paper/     the paper's §9 configuration exactly (bonds + vanilla swaps, standalone kernel, 50.9 ms)
+  benchmark/           library kernel on a broader book (bonds + IBOR swaps + OIS swaps, 62.7 ms); reported separately
+  aggregation/         contiguous ladders vs per-instrument maps (1.7 ms vs 320–373 ms at 100k x 66)
+```
+
+## Build
+
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/test_ladder
+cmake -S . -B build-avx2 -DLADDER_LANES=AVX2 && cmake --build build-avx2 && ./build-avx2/test_ladder
+cmake -S . -B build-port -DLADDER_LANES=PORTABLE && cmake --build build-port && ./build-port/test_ladder
+```
+GCC 13 or later. All backends pass the same tests on AVX-512, AVX2-only and SSE2-only targets. Measured at 100k
+instruments on one Sapphire Rapids core, streaming stores: AVX512 9.9 ms, AVX2 9.6 ms, STDX 8.4–12.0 ms depending on
+target flags, PORTABLE 21–22 ms. Streaming stores exist only on the x86 intrinsics backends; the others fall back to
+normal stores and lose that gain. The examples under `quantlib_reconcile/` and `hagan_waves/` need QuantLib C++
+(`apt install libquantlib0-dev` gives 1.33 on Ubuntu 24.04) and numpy; each has its own `run.sh` or Makefile.
+
+## The algorithm in one place
+
+`ladder/scan.hpp`:
+```
+forward  pass: interior[k] += x_i * (t_i - B[k-1])          one FMA per unit cashflow
+backward pass: running    += x_i;  at each boundary B[k]: suffix[k] = running
+combine:       dPV/ddelta_k = -( interior[k] + len(k) * suffix[k] )
+```
+The condition for exactness is that a stencil's bump leaks nothing outside its own interval; then every
+discount factor past it moves by one factor and the tail factorises. Box stencils satisfy it on any pricing
+curve (`examples/hagan_waves`). Node bumps of a cubic spline do not, and the scan correctly disagrees
+with them (`examples/quantlib_reconcile`, Cubic variant).
+
+## Recorded numbers (one Sapphire Rapids core, 2.1 GHz, VM)
+
+`examples/benchmark`, 500,000 instruments, stencils 30 + 36, 264 MB output:
+
+| variant | time | ns / sensitivity |
+|---|---|---|
+| bump-and-reprice (AoS, virtual npv, central differences) | 49,599 ms | 1,503 |
+| scalar scan per instrument | 407 ms | 12.3 |
+| eight-lane grouped, normal stores | 72 ms | 2.19 |
+| eight-lane grouped, streaming stores | 63 ms | 1.90 |
+| date-table refresh per curve update | 0.12 ms | — |
+
+Streaming-store floor for 264 MB on this core: ~15 ms. Reconciliation numbers are in each example's README.

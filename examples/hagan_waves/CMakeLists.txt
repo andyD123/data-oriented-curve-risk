@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.16)
+project(hagan_waves CXX)
+set(CMAKE_CXX_STANDARD 20)
+find_package(QuantLib QUIET)
+add_executable(ql_waves ql_waves.cpp)
+if(QuantLib_FOUND)
+  target_link_libraries(ql_waves QuantLib::QuantLib)
+else()
+  target_link_libraries(ql_waves QuantLib)       # e.g. Ubuntu libquantlib0-dev
+endif()
+add_executable(scan_wave scan_wave.cpp)
+target_include_directories(scan_wave PRIVATE ../..)

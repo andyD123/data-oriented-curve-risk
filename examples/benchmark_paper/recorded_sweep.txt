@@ -1,0 +1,5 @@
+N=10000  variant time (ms) ns/output speedup GRP 8-lane AVX-512, streaming stores 1.72 2.606 - one-off layout builds: scan 12.7 ms, group 27.4 ms; unique dates 3540; groups 3301; output 14 MB 
+N=30000  variant time (ms) ns/output speedup GRP 8-lane AVX-512, streaming stores 2.54 1.283 - one-off layout builds: scan 38.6 ms, group 50.2 ms; unique dates 3540; groups 5190; output 22 MB 
+N=100000  variant time (ms) ns/output speedup GRP 8-lane AVX-512, streaming stores 7.58 1.148 - one-off layout builds: scan 127.3 ms, group 145.1 ms; unique dates 3540; groups 14043; output 59 MB 
+N=300000  variant time (ms) ns/output speedup GRP 8-lane AVX-512, streaming stores 30.21 1.526 - one-off layout builds: scan 409.4 ms, group 448.3 ms; unique dates 3540; groups 39031; output 165 MB 
+N=500000  variant time (ms) ns/output speedup GRP 8-lane AVX-512, streaming stores 49.44 1.498 - one-off layout builds: scan 665.1 ms, group 749.3 ms; unique dates 3540; groups 64034; output 270 MB 

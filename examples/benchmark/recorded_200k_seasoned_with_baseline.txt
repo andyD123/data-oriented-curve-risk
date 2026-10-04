@@ -1,0 +1,11 @@
+N=200000 instruments (bonds / IBOR swaps / OIS swaps), 18.6 cashflows each, stencils 30+36, output 106 MB
+GRP vs SCAN max rel diff 3.4e-15
+BASE vs SCAN max rel diff 6.5e-08 (central difference, values > 1e4)
+
+BASE bump-and-reprice                            15041.50 ms  1139.507 ns/output         1x
+SCAN scalar, per instrument                         99.92 ms     7.570 ns/output       151x
+SCAN replication of unit cashflows (per curve update)     170.38 ms    12.907 ns/output        88x
+GRP  date table refresh (per curve update)           0.14 ms     0.011 ns/output    107324x
+GRP  8-lane, normal stores                          28.06 ms     2.126 ns/output       536x
+GRP  8-lane, streaming stores                       21.34 ms     1.617 ns/output       705x
+one-off: replication 305 ms, group layout 465 ms; unique dates 3638; groups 27291; lane occupancy 91.6%

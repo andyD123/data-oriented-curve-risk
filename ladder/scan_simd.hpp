@@ -1,0 +1,91 @@
+#pragma once
+// Grouped reverse scan: eight instruments per vector, backward walk over payment columns, stencil snapshots.
+// Output per group: [K_disc][8] then [K_proj][8], bucket-major, contiguous. Risk per unit forward bump.
+#include <vector>
+#include "lanes.hpp"
+#include "layout.hpp"
+#include "stencil.hpp"
+
+namespace ladder {
+
+enum class Store { normal, streaming };
+
+template <Store policy>
+inline void store8(double* p, vec8 v) { if constexpr (policy == Store::streaming) vstore_stream(p, v); else vstore(p, v); }
+
+template <Store policy = Store::normal>
+inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencils& Sp, double* out)
+{
+    const DateTable& T = L.table;
+    const int Kd = Sd.K(), Kp = Sp.K();
+    const size_t stride = L.stride(Kd, Kp);
+    std::vector<vec8> famt, oamt_p, oamt_a, oamt_b, pacc((size_t)Kp + 1);
+    for (size_t gi = 0; gi < L.groups.size(); ++gi) {
+        const Group& G = L.groups[gi];
+        double* out_d = out + gi * stride;
+        double* out_p = out_d + (size_t)Kd * LANES;
+
+        // per-coupon per-lane amounts that depend on the curves (broadcast factor x per-lane scale)
+        const int nf = (int)G.f_di.size(), no = (int)G.o_di.size();
+        famt.resize(nf); oamt_p.resize(no); oamt_a.resize(no); oamt_b.resize(no);
+        for (int q = 0; q < nf; ++q) {                       // IBOR amount = scale * (P(a)/P(b) - 1)
+            double ratio = T.P[G.f_di[q][1]] / T.P[G.f_di[q][2]];
+            famt[q] = vmul(vload(G.f_scale[q].v), vbroadcast(ratio - 1.0));
+        }
+        for (int q = 0; q < no; ++q) {                       // OIS unit cashflows: +x at p, +x at a, -x at b, -N D(p) at p
+            const double Dp = T.D[G.o_di[q][0]], Da = T.D[G.o_di[q][1]], Db = T.D[G.o_di[q][2]];
+            const double f = Dp * Da / Db;                   // x = N f ; entries are divided by the column's D(t) below, so pre-divide
+            vec8 N = vload(G.o_N[q].v);
+            oamt_p[q] = vmul(N, vbroadcast((f - Dp) / Dp)); // column p: (x - N Dp) / Dp
+            oamt_a[q] = vmul(N, vbroadcast(f / Da));         // column a:  x / Da
+            oamt_b[q] = vmul(N, vbroadcast(-f / Db));        // column b: -x / Db
+        }
+
+        // ---- discount ladder: backward column walk; bucket b accumulates while k == b-1
+        vec8 running = vzero(), interior = vzero(), suffix_cur = vzero(), beyond = vzero();   // beyond: open last stencil
+        int k = Kd; int qf = nf - 1; int qo = (int)G.o_at.size() - 1;
+        const double BK = Sd.B[Kd], BK1 = Sd.B[Kd-1];
+        auto emit = [&](int b) {
+            if (b > Kd) return;
+            vec8 r = (b == Kd && Sd.open_last) ? vneg(vadd(interior, beyond))
+                                               : vneg(vfma(vbroadcast(Sd.len(b)), suffix_cur, interior));
+            store8<policy>(out_d + (size_t)(b - 1) * LANES, r);
+        };
+        for (int ci = (int)G.col_di.size() - 1; ci >= 0; --ci) {
+            const int di = G.col_di[ci]; const double t = T.t[di];
+            while (k >= 1 && t < Sd.B[k]) { emit(k + 1); suffix_cur = running; interior = vzero(); --k; }
+            vec8 amt = vload(G.col_amt[ci].v);
+            while (qf >= 0 && G.f_col[qf] == ci) { amt = vadd(amt, famt[qf]); --qf; }
+            while (qo >= 0 && G.o_at[qo].first == ci) {        // OIS entries on this column
+                const int q = G.o_at[qo].second / 3, kind = G.o_at[qo].second % 3;
+                amt = vadd(amt, kind == 0 ? oamt_p[q] : kind == 1 ? oamt_a[q] : oamt_b[q]); --qo;
+            }
+            vec8 x = vmul(amt, vbroadcast(T.D[di]));
+            running = vadd(running, x);
+            if (t >= BK) { if (Sd.open_last) beyond = vfma(x, vbroadcast(t - BK1), beyond); }   // beyond the last boundary
+            else interior = vfma(x, vbroadcast(t - Sd.B[k]), interior);                        // k == bucket(t) - 1 here
+        }
+        while (k >= 1) { emit(k + 1); suffix_cur = running; interior = vzero(); --k; }
+        emit(1);
+
+        // ---- projection ladder: interior only, forward over IBOR coupons
+        for (int kk = 0; kk <= Kp; ++kk) pacc[kk] = vzero();
+        for (int q = 0; q < nf; ++q) {
+            const int ip = G.f_di[q][0], ia = G.f_di[q][1], ib = G.f_di[q][2];
+            const double ta = T.t[ia], tb = T.t[ib];
+            vec8 w = vmul(vload(G.f_scale[q].v), vbroadcast(T.P[ia] / T.P[ib] * T.D[ip]));
+            for (int kk = T.bp[ia]; kk <= T.bp[ib]; ++kk) pacc[kk] = vfma(w, vbroadcast(Sp.psi(kk, ta) - Sp.psi(kk, tb)), pacc[kk]);
+        }
+        for (int kk = 1; kk <= Kp; ++kk) store8<policy>(out_p + (size_t)(kk - 1) * LANES, pacc[kk]);
+    }
+    if constexpr (policy == Store::streaming) vfence();
+}
+
+// per-instrument view of the grouped output: K_disc then K_proj values for instrument i
+inline void gather(const GroupLayout& L, int Kd, int Kp, const double* out, int group, int lane, double* dst)
+{
+    const double* g = out + (size_t)group * L.stride(Kd, Kp);
+    for (int k = 0; k < Kd + Kp; ++k) dst[k] = g[(size_t)k * LANES + lane];
+}
+
+} // namespace ladder
