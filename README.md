@@ -72,7 +72,10 @@ ctest --preset release
 
 The `release` preset builds both instruction sets. Each vectorised target exists twice,
 built against `ladder_avx2` (`-mavx2 -mfma`) and `ladder_avx512`
-(`-mavx512f -mavx512dq -mfma -mprefer-vector-width=512`):
+(`-mavx512f -mavx512dq -mfma -mprefer-vector-width=512`); both add `-ffp-contract=fast`, and under
+MSVC they are `/arch:AVX2` and `/arch:AVX512` with `/fp:contract` (VS 2022 and later), so every
+compiler may fuse `a*b+c` into one FMA. Contraction changes rounding in the last bits, and each
+compiler chooses where to apply it, so results agree across compilers to tolerance, not bit for bit:
 `test_ladder_avx2` / `test_ladder_avx512`, `test_boundaries_avx2` / `test_boundaries_avx512`,
 `bench_library_avx2` / `bench_library_avx512`. The scalar examples (`aggregation`,
 `scan_wave`, the QuantLib generators) are built once. `release` also builds the LRU date
@@ -90,6 +93,9 @@ The single-ISA presets are unchanged: `release-avx512`, `release-avx2`, `release
 In CLion, reload CMake after pulling and enable the `release` profile; the shared run
 configurations in `.run/` name the `release` targets, including both ISA variants.
 WSL or MinGW with GCC 13+/libstdc++ is the route for `bench_paper` and `adjoint_bench` on Windows.
+Under MSVC those two are not built, so their CLion configurations (`bench_paper 100k quick`,
+`bench_paper 500k (paper section 9)` and `adjoint_bench 500k`) show as missing targets; the three
+QuantLib configurations do the same on any compiler when QuantLib is not installed.
 Explicit Debug builds can still be configured separately for diagnosis; they are not part
 of the shipped presets.
 

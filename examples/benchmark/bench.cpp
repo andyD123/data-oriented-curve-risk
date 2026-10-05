@@ -86,7 +86,7 @@ static std::string compiler_name() {
 #elif defined(__GNUC__)
     return std::string("GCC ") + __VERSION__;
 #elif defined(_MSC_VER)
-    return "MSVC " + std::to_string(_MSC_FULL_VER);
+    return "MSVC " + std::to_string(_MSC_FULL_VER / 10000000) + "." + std::to_string(_MSC_FULL_VER / 100000 % 100) + "." + std::to_string(_MSC_FULL_VER % 100000);
 #else
     return "unknown compiler";
 #endif

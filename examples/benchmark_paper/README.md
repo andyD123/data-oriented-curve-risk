@@ -132,19 +132,20 @@ At 64 columns, grouped order is 9.4x faster than random order at 500,000 trades 
 columns. Its misses do not grow with the book (7,020 at both sizes), because they depend only on the number of
 distinct dates; random-order misses grow with the number of trades.
 
-The same 500,000-trade comparison on a second set-up (HP Omen 45L desktop with AVX-512, Windows, MSVC 19.44):
+The same 500,000-trade comparison on a second set-up (HP Omen 45L desktop with AVX-512, Windows, MSVC 19.44 with
+`/fp:contract`):
 
 | order | misses | hit rate | time |
 |---|---:|---:|---:|
-| random | 22,366,506 | 33.81% | 35,256 ms |
-| sorted | 10,500 | 99.97% | 3,231 ms |
-| grouped | 7,020 | 99.98% | 3,196 ms |
+| random | 22,366,506 | 33.81% | 30,608 ms |
+| sorted | 10,500 | 99.97% | 3,030 ms |
+| grouped | 7,020 | 99.98% | 3,060 ms |
 
-Grouped is 11.0x faster than random there. Absolute times differ by about 2x between the two set-ups, which differ
-in both machine and compiler; the ratios and the sorted and grouped miss counts carry over.
-
-Agreement with the scalar scan: 5.1e-8 at 100,000 trades and 6.6e-8 at 500,000, which is the truncation error of
-the central difference at eps = 1e-5.
+Grouped is 10.0x faster than random there. Absolute times differ by about 2x between the two set-ups, which differ
+in both machine and compiler; the ratios and the sorted and grouped miss counts carry over. Before MSVC was given
+`/fp:contract`, the same rows took 5 to 15% longer on that machine. That is consistent with contraction allowing
+FMA instructions in the pricing loops, which are plain C++ that the compiler vectorises; the machine code was not
+inspected.
 
 The 100,000-trade table and the first 500,000-trade table were measured on one core of an Intel Xeon VM at 2.1 GHz
 (48 KB L1d, 2 MB L2), GCC 13.3, AVX-512. Miss counts and hit rates are deterministic for a given standard library
