@@ -11,3 +11,4 @@ examples/**/scan_wave
 examples/**/ql_examples
 examples/**/scan_reconcile
 test_ladder
+.vs/
