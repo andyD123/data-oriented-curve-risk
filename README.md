@@ -40,7 +40,9 @@ STDX can use x86 streaming stores when its target supports them; portable loops 
 Default targets (single-ISA build) are `test_ladder`, `test_boundaries`, `bench_library`, `aggregation` and `scan_wave`; the `release` preset builds the vectorised ones as `_avx2` and `_avx512` pairs (below).
 CTest runs the original suite, independent boundary/oracle tests and a small benchmark
 correctness gate. With Python 3 installed it also runs an isolated wave-fixture replay
-and malformed-input checks (standard library only; four CTest tests in total).
+and malformed-input checks (standard library only; four CTest tests in total). The `release`
+preset adds the `_avx512` variants and, on a machine with AVX-512, a gated run of `scenario_bench`
+with its malformed-input checks.
 `BUILD_TESTING=OFF` omits tests; `LADDER_BUILD_EXAMPLES=OFF` omits examples.
 
 For example, on a single-configuration generator:

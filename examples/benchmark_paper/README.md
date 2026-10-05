@@ -89,8 +89,14 @@ result: LRU cache, cost of one curve update
    of building that table per curve update, and the scalar reverse scan, which computes the sensitivities directly
    without scenarios. With the baseline argument set to 1, a per-scenario repricing row (BASE) and speed-ups against
    it are added.
-5. **accuracy**: the largest difference between the scenario results and the scalar scan, relative to
-   max(|value|, 1e4). About 5e-8 is the truncation error of the central difference at eps = 1e-5.
+5. **accuracy and correctness gate**: every full-table and cache run, and BASE when it is run, is compared with
+   the scalar scan, relative to max(|value|, 1e4). The output gives the largest difference and the run it came
+   from; about 5e-8 is the truncation error of the central difference at eps = 1e-5. The gate fails if any run
+   differs by more than 1e-6 or produces a non-finite value; the program then names the run and exits with status 1.
+
+Malformed arguments, curve files and `LRU_CAPS` values are rejected with a message and exit status 1. In the
+`release` preset on a machine with AVX-512, the CTest test `scenario_bench_gate_and_input_checks` runs a small gated
+case and those rejections.
 
 ### Results
 

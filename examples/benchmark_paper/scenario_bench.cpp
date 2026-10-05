@@ -11,12 +11,15 @@
 // Same book type as examples/benchmark_paper/adjoint_bench.cpp: bonds + vanilla swaps, example curves, 30+36 waves.
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string_view>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -27,8 +30,22 @@ using namespace ladder;
 constexpr double DPY = 365.0;
 struct Curve { Stencils S; std::vector<double> logD;
     double df(double t) const { int k = S.bucket(t); double a = (t - S.B[k-1]) / S.len(k); return std::exp(logD[k-1] + a * (logD[k] - logD[k-1])); } };
-static Curve read_curve(FILE* in) { char nm[16]; int n; (void)std::fscanf(in, "%15s %d", nm, &n); Curve c; c.S.B.resize(n); c.logD.resize(n);
-    for (int i = 0; i < n; ++i) { double t, D; (void)std::fscanf(in, "%lf %lf", &t, &D); c.S.B[i] = t; c.logD[i] = std::log(D); } return c; }
+static Curve read_curve(FILE* in) { char nm[16]; int n;
+    if (std::fscanf(in, "%15s %d", nm, &n) != 2 || n < 2 || n > 100000) throw std::runtime_error("invalid curve header");
+    Curve c; c.S.B.resize(n); c.logD.resize(n);
+    for (int i = 0; i < n; ++i) { double t, D;
+        if (std::fscanf(in, "%lf %lf", &t, &D) != 2 || !std::isfinite(t) || !std::isfinite(D) || !(D > 0.))
+            throw std::runtime_error("invalid curve time/discount factor");
+        c.S.B[i] = t; c.logD[i] = std::log(D); }
+    c.S.validate(); return c; }
+static const char* usage = "usage: scenario_bench [N=1..10000000] [baseline=0|1] [reps=1..1000] [curve_file]\n"
+                           "       environment: LRU_CAPS=c1,c2,... (each 1..1000000), LRU_ALL=1";
+static size_t argument(const char* text, size_t lo, size_t hi) {
+    std::string_view sv(text); size_t value = 0;
+    auto [end, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
+    if (ec != std::errc{} || end != sv.data() + sv.size() || value < lo || value > hi) throw std::invalid_argument(usage);
+    return value;
+}
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 // Vectorised LRU date cache, populated on demand: one entry per date holds the whole scenario column.
@@ -81,13 +98,20 @@ static std::string grouped_digits(size_t v) {
     return r;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
     enter_example_dir();
-    size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000; int run_base = argc > 2 ? std::atoi(argv[2]) : 1; int reps = argc > 3 ? std::atoi(argv[3]) : 3;
-    FILE* in = std::fopen(argc > 4 ? argv[4] : "quantlib_example_curves.txt", "r"); int nc; (void)std::fscanf(in, "%d", &nc);
-    Curve cd = read_curve(in), cp = read_curve(in); std::fclose(in);
+    if (argc > 5) throw std::invalid_argument(usage);
+    const size_t N = argc > 1 ? argument(argv[1], 1, 10000000) : 100000;
+    const int run_base = argc > 2 ? (int)argument(argv[2], 0, 1) : 1;
+    const int reps = argc > 3 ? (int)argument(argv[3], 1, 1000) : 3;
+    const char* curve_path = argc > 4 ? argv[4] : "quantlib_example_curves.txt";
+    FILE* in = std::fopen(curve_path, "r"); if (!in) throw std::runtime_error(std::string("cannot open ") + curve_path);
+    int nc = 0; if (std::fscanf(in, "%d", &nc) != 1 || nc != 2) { std::fclose(in); throw std::runtime_error(std::string("cannot read two curves from ") + curve_path); }
+    Curve cd, cp; try { cd = read_curve(in); cp = read_curve(in); } catch (...) { std::fclose(in); throw; } std::fclose(in);
     const int Ko = cd.S.K(), Kp = cp.S.K(), K = Ko + Kp; const double eps = 1e-5;
     const int S = 2 * K, SP = (S + 7) / 8 * 8;       // scenarios: disc up/down per wave, then proj up/down; padded to 8
+    constexpr int SP_MAX = 256;                       // size of the per-instrument scenario accumulator pv[]
+    if (SP > SP_MAX) throw std::runtime_error("curves have " + std::to_string(K) + " nodes in total; at most 128 are supported");
 
     // ---- book (bonds + vanilla swaps), integer days
     std::mt19937_64 rng(42); std::uniform_int_distribution<int> start_d(2, 61), years_d(1, 29), type_d(0, 1); std::uniform_real_distribution<double> rate_d(0.01, 0.06);
@@ -130,8 +154,29 @@ int main(int argc, char** argv) {
     for (int r = 0; r < reps; ++r) { double t0 = now_ms(); build_tables(); t_table = std::min(t_table, now_ms() - t0); }
 
     std::vector<double> out_sv(N * K), out_ref(N * K);
+    // ---- scalar scan reference (unit cashflows on base curves)
+    std::vector<std::vector<UnitCashflow>> ucf(N); std::vector<std::vector<ProjectionTerm>> pt(N);
+    auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };
+    for (size_t i = 0; i < N; ++i) { for (auto& f : book[i].fix) replicate_fixed(f.amt, T[f.d], df, ucf[i]);
+        for (auto& f : book[i].flt) replicate_ibor(f.scale, T[f.a], T[f.b], T[f.p], df, pf, ucf[i], pt[i]); sort_by_time(ucf[i]); }
+    double t_scan = 1e30;
+    for (int r = 0; r < reps; ++r) { double t0 = now_ms(); for (size_t i = 0; i < N; ++i) { scan_discount(cd.S, ucf[i], &out_ref[i*K]); scan_projection(cp.S, pt[i], &out_ref[i*K+Ko]); } t_scan = std::min(t_scan, now_ms() - t0); }
+
+    // ---- correctness gate: every scenario run, and BASE when run, is compared with the scalar scan
+    constexpr double TOL = 1e-6;    // relative to max(|value|, 1e4); about 15x the central-difference truncation error at eps = 1e-5
+    bool all_ok = true; double worst = 0; std::string worst_run; size_t runs_checked = 0;
+    for (double v : out_ref) if (!std::isfinite(v)) { all_ok = false; std::fprintf(stderr, "scenario_bench: non-finite scalar scan result\n"); break; }
+    auto check = [&](const std::vector<double>& got, const std::string& run) {
+        double w = 0; bool finite = true;
+        for (size_t j = 0; j < got.size(); ++j) {
+            if (!std::isfinite(got[j])) { finite = false; continue; }
+            w = std::max(w, std::fabs(got[j] - out_ref[j]) / std::max(std::fabs(out_ref[j]), 1e4)); }
+        if (!finite) std::fprintf(stderr, "scenario_bench: non-finite result in %s\n", run.c_str());
+        if (!finite || !(w <= TOL)) { all_ok = false; std::fprintf(stderr, "scenario_bench: %s differs from the scalar scan by %.1e\n", run.c_str(), w); }
+        if (runs_checked++ == 0 || w > worst) { worst = w; worst_run = run; }
+        return w; };
     auto price_sv = [&](const std::vector<size_t>& order) {
-        alignas(64) double pv[256];
+        alignas(64) double pv[SP_MAX];
         for (size_t ii : order) { const Inst& I = book[ii];
             for (int s = 0; s < SP; ++s) pv[s] = 0.0;
             for (const Fix& f : I.fix) { const double* D = &Dt[(size_t)f.d * SP]; const double a = f.amt;
@@ -147,11 +192,13 @@ int main(int argc, char** argv) {
     std::stable_sort(sort_order.begin(), sort_order.end(), [&](size_t a, size_t b){ return book[a].sig < book[b].sig; });
     double t_rand = 1e30, t_sort = 1e30;
     for (int r = 0; r < reps; ++r) { double t0 = now_ms(); price_sv(rand_order); t_rand = std::min(t_rand, now_ms() - t0); }
+    check(out_sv, "full table, random order");
     for (int r = 0; r < reps; ++r) { double t0 = now_ms(); price_sv(sort_order); t_sort = std::min(t_sort, now_ms() - t0); }
+    check(out_sv, "full table, sorted order");
 
     // ---- on-demand LRU cache, capacity sweep, random vs sorted order
     auto price_lru = [&](const std::vector<size_t>& order, int cap, size_t& miss, size_t& look) {
-        LruColumns cD(cap, SP), cP(cap, SP); alignas(64) double pv[256];
+        LruColumns cD(cap, SP), cP(cap, SP); alignas(64) double pv[SP_MAX];
         for (size_t ii : order) { const Inst& I = book[ii];
             for (int s2 = 0; s2 < SP; ++s2) pv[s2] = 0.0;
             for (const Fix& f : I.fix) { const double* D = cD.fetch(f.d, fill_D); const double a = f.amt; for (int s2 = 0; s2 < SP; ++s2) pv[s2] += a * D[s2]; }
@@ -164,7 +211,11 @@ int main(int argc, char** argv) {
         miss = cD.misses + cP.misses; look = cD.lookups + cP.lookups; };
     struct LruRow { int cap; const char* ord; double ms; size_t miss, look; };
     std::vector<LruRow> lru_rows;
-    std::vector<int> caps = {16, 64, 128, 256, 1024, 4096}; if (const char* e = std::getenv("LRU_CAPS")) { caps.clear(); for (const char* p = e; *p; ) { caps.push_back(std::atoi(p)); while (*p && *p != 0x2c) ++p; if (*p) ++p; } }
+    std::vector<int> caps = {16, 64, 128, 256, 1024, 4096};
+    if (const char* e = std::getenv("LRU_CAPS")) { caps.clear(); std::string_view rest(e);
+        while (true) { const size_t comma = rest.find(','); const std::string item(rest.substr(0, comma));
+            caps.push_back((int)argument(item.c_str(), 1, 1000000));
+            if (comma == std::string_view::npos) break; rest.remove_prefix(comma + 1); } }
     // PROTOTYPE ordering: group trades by shared schedule (start date first, then type, then tenor), so bonds and swaps
     // that pay on the same dates are adjacent. sig = type * 100000 + start * 100 + years.
     std::vector<size_t> grouped_order_prototype(N); std::iota(grouped_order_prototype.begin(), grouped_order_prototype.end(), 0);
@@ -177,19 +228,12 @@ int main(int argc, char** argv) {
         if (o == 0 && cap < 1024 && N > 100000 && !std::getenv("LRU_ALL")) continue;                     // random order with small caps thrashes: sweep at 100k only
         const auto& ord = *lru_orders[o]; double best = 1e30; size_t mi = 0, lo = 0;
         for (int r = 0; r < reps; ++r) { double t0 = now_ms(); price_lru(ord, cap, mi, lo); best = std::min(best, now_ms() - t0); }
+        check(out_sv, "LRU cache, " + std::to_string(cap) + " columns, " + lru_order_names[o] + " order");
         lru_rows.push_back({cap, lru_order_names[o], best, mi, lo}); }
 
-    // ---- scalar scan reference (unit cashflows on base curves)
-    std::vector<std::vector<UnitCashflow>> ucf(N); std::vector<std::vector<ProjectionTerm>> pt(N);
-    auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };
-    for (size_t i = 0; i < N; ++i) { for (auto& f : book[i].fix) replicate_fixed(f.amt, T[f.d], df, ucf[i]);
-        for (auto& f : book[i].flt) replicate_ibor(f.scale, T[f.a], T[f.b], T[f.p], df, pf, ucf[i], pt[i]); sort_by_time(ucf[i]); }
-    double t_scan = 1e30;
-    for (int r = 0; r < reps; ++r) { double t0 = now_ms(); for (size_t i = 0; i < N; ++i) { scan_discount(cd.S, ucf[i], &out_ref[i*K]); scan_projection(cp.S, pt[i], &out_ref[i*K+Ko]); } t_scan = std::min(t_scan, now_ms() - t0); }
-    double w = 0; for (size_t j = 0; j < out_sv.size(); ++j) { double s = std::max(std::fabs(out_ref[j]), 1e4); w = std::max(w, std::fabs(out_sv[j] - out_ref[j]) / s); }
 
     // ---- BASE: per scenario, per instrument, bracket search + exp per cashflow
-    double t_base = -1;
+    double t_base = -1, w_base = 0;
     if (run_base) { std::vector<double> ob(N * K); double t0 = now_ms();
         auto price = [&](const Inst& I, int s) { double v = 0;
             auto Ds = [&](double t){ double d = cd.df(t); if (s < Ko) d *= std::exp(-eps * cd.S.overlap(s + 1, t)); else if (s < 2*Ko) d *= std::exp(eps * cd.S.overlap(s - Ko + 1, t)); return d; };
@@ -199,7 +243,7 @@ int main(int argc, char** argv) {
             return v; };
         for (int k = 0; k < Ko; ++k) for (size_t i = 0; i < N; ++i) ob[i*K+k] = (price(book[i], k) - price(book[i], Ko + k)) / (2*eps);
         for (int k = 0; k < Kp; ++k) for (size_t i = 0; i < N; ++i) ob[i*K+Ko+k] = (price(book[i], 2*Ko + k) - price(book[i], 2*Ko + Kp + k)) / (2*eps);
-        t_base = now_ms() - t0; }
+        t_base = now_ms() - t0; w_base = check(ob, "BASE"); }
 
     // distinct dates per curve: the miss floor (each column computed once per curve)
     size_t ndisc = 0, nproj = 0;
@@ -250,7 +294,13 @@ int main(int argc, char** argv) {
     std::printf("  %-56s %9.1f ms %11.2f ns per date (both curves)\n", "full table build, per curve update", t_table, t_table * 1e6 / U);
     ctx("scalar reverse scan, sensitivities only (no scenarios)", t_scan);
 
-    std::printf("\naccuracy\n");
-    std::printf("  scenario results vs scalar scan: max difference %.1e, relative to max(|value|, 1e4), checked on the last LRU cache run;\n", w);
-    std::printf("  this is the truncation error of the central difference at eps = 1e-5\n");
+    std::printf("\naccuracy (every run compared with the scalar scan, relative to max(|value|, 1e4))\n");
+    std::printf("  largest difference over %zu run%s: %.1e (%s)\n", runs_checked, runs_checked == 1 ? "" : "s", worst, worst_run.c_str());
+    if (run_base) std::printf("  BASE: %.1e\n", w_base);
+    std::printf("  about 5e-8 is the truncation error of the central difference at eps = 1e-5\n");
+    std::printf("\ncorrectness gate: %s (every run agrees with the scalar scan to %.0e; every value finite)\n", all_ok ? "PASS" : "FAIL", TOL);
+    return all_ok ? 0 : 1;
+}
+catch (const std::exception& e) {
+    std::fprintf(stderr, "scenario_bench: %s\n", e.what()); return 1;
 }
