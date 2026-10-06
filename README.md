@@ -10,10 +10,10 @@ here is the data-oriented organisation: shared dates, grouped instruments and re
 
 ## Reading the examples
 
-Start with the simple four-step progression in
-[`examples/progression/README.md`](examples/progression/README.md): PV, shared dates,
-a complete bucketed risk row, then a wide schedule row. The benchmark and validation
-programs come afterwards.
+Start with the simple progression in
+[`examples/progression/README.md`](examples/progression/README.md): ordinary PV, scenario-vector
+curve, shared-schedule reuse, bucket-and-tail risk, then the wide schedule-row scan. The benchmark
+and validation programs come afterwards.
 
 The [demonstrator reading guide](examples/READING_GUIDE.md) points to the scenario-cache,
 adjoint and aggregation experiments. These now use short named operations and a small
