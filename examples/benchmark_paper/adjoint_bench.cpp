@@ -123,21 +123,17 @@ void print_results(std::size_t instruments, const demo::CurvePair& curves,
                    double direct_error, double tape_error, std::size_t tape_nodes)
 {
     const double output_count = double(instruments) * curves.wave_count();
-    std::printf("N=%zu bonds+vanilla swaps, %d+%d waves; direct vs scan %.1e, tape vs scan %.1e
-",
+    std::printf("N=%zu bonds+vanilla swaps, %d+%d waves; direct vs scan %.1e, tape vs scan %.1e\n",
         instruments, curves.discount.waves.K(), curves.projection.waves.K(), direct_error, tape_error);
     const auto row = [&](const char* name, double milliseconds) {
-        std::printf("%-40s %10.1f ms %9.2f ns/sensitivity
-",
+        std::printf("%-40s %10.1f ms %9.2f ns/sensitivity\n",
                     name, milliseconds, milliseconds * 1e6 / output_count);
     };
     row("SCAN  scalar library scan", scan_ms);
     row("DIRECT N*K overlap adjoint, no tape", direct_ms);
     row("TAPE  reverse mode with recorded tape", tape_ms);
-    std::printf("tape nodes in the final instrument: %zu
-", tape_nodes);
-    std::printf("correctness gate: PASS (finite results; scaled difference <= 1e-8)
-");
+    std::printf("tape nodes in the final instrument: %zu\n", tape_nodes);
+    std::printf("correctness gate: PASS (finite results; scaled difference <= 1e-8)\n");
 }
 
 int run_experiment(std::size_t count, int repetitions)
@@ -187,8 +183,7 @@ int main(int argc, char** argv)
         const auto repeats = argc > 2 ? demo::read_count(argv[2], 1, 1000, usage) : 3;
         return adjoint_demo::run_experiment(count, static_cast<int>(repeats));
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "adjoint_bench: %s
-", error.what());
+        std::fprintf(stderr, "adjoint_bench: %s\n", error.what());
         return 1;
     }
 }

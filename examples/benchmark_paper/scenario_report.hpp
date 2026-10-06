@@ -28,8 +28,7 @@ struct AccuracyReport {
         }
         if (!finite || !(error <= tolerance)) {
             passed = false;
-            std::fprintf(stderr, "scenario_bench: invalid result in %s (error %.1e)
-",
+            std::fprintf(stderr, "scenario_bench: invalid result in %s (error %.1e)\n",
                          name.c_str(), error);
         }
         if (cases_checked++ == 0 || error > largest_error) {
@@ -97,19 +96,14 @@ inline std::string grouped_digits(std::size_t value)
 
 inline void print_configuration(const Book& book, const Scenarios& scenarios)
 {
-    std::printf("scenario_bench: wave scenarios priced from an LRU date cache, single thread
-");
-    std::printf("build:     %s instructions; %s
-", instruction_set(), compiler_name().c_str());
-    std::printf("book:      %s instruments (bonds and vanilla swaps); %s distinct curve dates
-",
+    std::printf("scenario_bench: wave scenarios priced from an LRU date cache, single thread\n");
+    std::printf("build:     %s instructions; %s\n", instruction_set(), compiler_name().c_str());
+    std::printf("book:      %s instruments (bonds and vanilla swaps); %s distinct curve dates\n",
         grouped_digits(book.instruments.size()).c_str(), grouped_digits(book.times.size()).c_str());
-    std::printf("scenarios: %d (%d discount waves + %d projection waves, up and down), padded to %d
-",
+    std::printf("scenarios: %d (%d discount waves + %d projection waves, up and down), padded to %d\n",
         scenarios.count(), scenarios.discount_waves, scenarios.projection_waves,
         scenarios.padded_count());
-    std::printf("outputs:   %s sensitivities (%d per instrument, per unit forward-rate shift)
-",
+    std::printf("outputs:   %s sensitivities (%d per instrument, per unit forward-rate shift)\n",
         grouped_digits(book.instruments.size() * scenarios.wave_count()).c_str(),
         scenarios.wave_count());
 }
@@ -117,38 +111,26 @@ inline void print_configuration(const Book& book, const Scenarios& scenarios)
 inline void print_terms(const Book& book, const Scenarios& scenarios, int repetitions)
 {
     const auto dates = count_used_dates(book);
-    std::printf("
-terms
-");
-    std::printf("  column      %d scenario factors at one date (%s bytes)
-",
+    std::printf("\nterms\n");
+    std::printf("  column      %d scenario factors at one date (%s bytes)\n",
         scenarios.padded_count(), grouped_digits(scenarios.padded_count() * 8).c_str());
-    std::printf("  misses      column computations, both curves; the floor is %s, each column once
-",
+    std::printf("  misses      column computations, both curves; the floor is %s, each column once\n",
         grouped_digits(dates.total()).c_str());
-    std::printf("              (%s discount-curve dates + %s projection-curve dates)
-",
+    std::printf("              (%s discount-curve dates + %s projection-curve dates)\n",
         grouped_digits(dates.discount).c_str(), grouped_digits(dates.projection).c_str());
-    std::printf("  orders      random = shuffled; sorted = type, start date, tenor;
-"
-                "              grouped = start date, type, tenor (prototype ordering)
-");
-    std::printf("  full table  every date's column computed up front (%.1f MB per curve)
-",
+    std::printf("  orders      random = shuffled; sorted = type, start date, tenor;\n"
+                "              grouped = start date, type, tenor (prototype ordering)\n");
+    std::printf("  full table  every date's column computed up front (%.1f MB per curve)\n",
         book.times.size() * scenarios.padded_count() * 8 / 1e6);
-    std::printf("  time        wall clock per curve update, best of %d run%s
-",
+    std::printf("  time        wall clock per curve update, best of %d run%s\n",
         repetitions, repetitions == 1 ? "" : "s");
 }
 
 inline void print_cache_rows(const Measurements& measured, const Scenarios& scenarios,
                              double output_count)
 {
-    std::printf("
-result: LRU cache, cost of one curve update
-");
-    std::printf("  %7s %9s  %-8s %12s %14s %13s %9s
-",
+    std::printf("\nresult: LRU cache, cost of one curve update\n");
+    std::printf("  %7s %9s  %-8s %12s %14s %13s %9s\n",
                 "columns", "cache", "order", "time", "per output", "misses", "hit rate");
     for (const auto& row : measured.cache) {
         const double kilobytes = row.capacity * scenarios.padded_count() * 8 / 1e3;
@@ -156,8 +138,7 @@ result: LRU cache, cost of one curve update
         std::snprintf(cache_size, sizeof cache_size, kilobytes < 1000 ? "%.0f KB" : "%.1f MB",
                       kilobytes < 1000 ? kilobytes : kilobytes / 1000);
         const double hit_rate = 100.0 * (1.0 - double(row.counts.misses) / row.counts.lookups);
-        std::printf("  %7d %9s  %-8s %9.1f ms %11.2f ns %13s %8.2f%%
-",
+        std::printf("  %7d %9s  %-8s %9.1f ms %11.2f ns %13s %8.2f%%\n",
             row.capacity, cache_size, row.order, row.milliseconds,
             row.milliseconds * 1e6 / output_count,
             grouped_digits(row.counts.misses).c_str(), hit_rate);
@@ -178,37 +159,31 @@ inline void print_cache_comparisons(const Measurements& measured,
             if (std::string(row.order) == "grouped") grouped = &row;
         }
         if (random && grouped) {
-            std::printf("  at %d columns: grouped is %.1fx faster than random%s
-",
+            std::printf("  at %d columns: grouped is %.1fx faster than random%s\n",
                 capacity, random->milliseconds / grouped->milliseconds,
                 grouped->counts.misses == floor ? ", at the miss floor" : "");
         } else if (grouped) {
             std::printf("  at %d columns: random order not run "
-                        "(skipped above 100,000 trades unless LRU_ALL is set)
-", capacity);
+                        "(skipped above 100,000 trades unless LRU_ALL is set)\n", capacity);
         }
     }
 }
 
 inline void print_context(const Measurements& measured, double output_count, std::size_t dates)
 {
-    std::printf("
-context: same book, other methods
-");
+    std::printf("\ncontext: same book, other methods\n");
     const auto row = [&](const char* name, double milliseconds, bool baseline = false) {
         std::printf("  %-56s %9.1f ms %11.2f ns per output",
                     name, milliseconds, milliseconds * 1e6 / output_count);
         if (measured.baseline >= 0.0 && !baseline) {
             std::printf(" %8.0fx vs BASE", measured.baseline / milliseconds);
         }
-        std::printf("
-");
+        std::printf("\n");
     };
     if (measured.baseline >= 0.0) row("BASE  per-scenario repricing", measured.baseline, true);
     row("full table, random order", measured.table_random);
     row("full table, sorted order", measured.table_sorted);
-    std::printf("  %-56s %9.1f ms %11.2f ns per date (both curves)
-",
+    std::printf("  %-56s %9.1f ms %11.2f ns per date (both curves)\n",
         "full table build, per curve update", measured.table_build,
         measured.table_build * 1e6 / dates);
     row("scalar reverse scan, sensitivities only (no scenarios)", measured.scalar_scan);
@@ -217,20 +192,13 @@ context: same book, other methods
 inline void print_accuracy(const Measurements& measured)
 {
     const auto& accuracy = measured.accuracy;
-    std::printf("
-accuracy (each case compared with the scalar scan, "
-                "relative to max(|value|, 1e4))
-");
-    std::printf("  largest difference over %zu runs: %.1e (%s)
-",
+    std::printf("\naccuracy (each case compared with the scalar scan, "
+                "relative to max(|value|, 1e4))\n");
+    std::printf("  largest difference over %zu runs: %.1e (%s)\n",
         accuracy.cases_checked, accuracy.largest_error, accuracy.worst_case.c_str());
-    if (measured.baseline >= 0.0) std::printf("  BASE: %.1e
-", measured.baseline_error);
-    std::printf("  central differences use eps = 1e-5; truncation error is expected
-");
-    std::printf("
-correctness gate: %s (each case agrees to %.0e; every value finite)
-",
+    if (measured.baseline >= 0.0) std::printf("  BASE: %.1e\n", measured.baseline_error);
+    std::printf("  central differences use eps = 1e-5; truncation error is expected\n");
+    std::printf("\ncorrectness gate: %s (each case agrees to %.0e; every value finite)\n",
         accuracy.passed ? "PASS" : "FAIL", AccuracyReport::tolerance);
 }
 

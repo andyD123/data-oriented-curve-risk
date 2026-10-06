@@ -14,8 +14,7 @@ namespace scenario_demo {
 namespace {
 
 constexpr const char* usage =
-    "usage: scenario_bench [N=1..10000000] [baseline=0|1] [reps=1..1000] [curve_file]
-"
+    "usage: scenario_bench [N=1..10000000] [baseline=0|1] [reps=1..1000] [curve_file]\n"
     "       environment: LRU_CAPS=c1,c2,... (each 2..1000000), LRU_ALL=1";
 
 struct Options {
@@ -164,8 +163,7 @@ int main(int argc, char** argv)
         enter_example_dir();
         return scenario_demo::run_experiment(scenario_demo::read_options(argc, argv));
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "scenario_bench: %s
-", error.what());
+        std::fprintf(stderr, "scenario_bench: %s\n", error.what());
         return 1;
     }
 }
