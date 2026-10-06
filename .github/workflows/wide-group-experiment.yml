@@ -1,5 +1,7 @@
 name: Wide schedule-group experiment
 on:
+  push:
+    branches: [ "experiment/wide-schedule-groups" ]
   workflow_dispatch:
 
 jobs:
