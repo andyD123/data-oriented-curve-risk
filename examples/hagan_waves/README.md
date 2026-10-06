@@ -24,7 +24,7 @@ Requires QuantLib C++ (`apt install libquantlib0-dev` on Ubuntu 24.04 gives 1.33
 
 ## The wave in QuantLib
 
-\`\`\`cpp
+```cpp
 Real overlap(Time t) const {
     const Real inside = std::max(t - t0_, 0.0);
     return open_last_ ? inside : std::min(inside, t1_ - t0_);
@@ -33,7 +33,7 @@ Real overlap(Time t) const {
 DiscountFactor discountImpl(Time t) const override {
     return base_->discount(t, true) * std::exp(-delta_ * overlap(t));
 }
-\`\`\`
+```
 Interior waves use the bounded policy. The final wave uses `open_last_ = true`, matching Hagan (2015,
 eq. 2.2b/2.3b). The actual implementation is in `ql_waves.cpp`; this excerpt only shows the terminal policy.
 Relink the handle the instruments price off; at-par coupon fixings on the projection curve follow automatically.
@@ -56,7 +56,7 @@ Scan vs QuantLib wave bumps on the shipped cubic curves:
 Book wave ladder per 1 bp (largest): Euribor6M 2–3y 370, 3–4y 356, 4–5y 339, 5–6y 223; Eonia 2–5y ≈ 94 each;
 monthly FRA waves 0.5–2y 25–35 each; nothing past 7y.
 
-Hedge against the example's par OIS 2–10y and par swaps 3–10y (least squares, rank 17):
+Legacy least-squares comparison against the example's par OIS 2–10y and par swaps 3–10y (rank 17):
 pay OIS 5y 1.00M, IRS 4y 0.14M, IRS 5y 1.14M, IRS 6y 2.14M, IRS 7y 0.14M.
 Residual wave risk ≤ 29 per bp against a book maximum of 370 (FRA-region and stub risk the annual swaps cannot
 represent). Parallel 1 bp: book 2,468, hedge 2,482.
