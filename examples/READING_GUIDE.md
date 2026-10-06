@@ -1,20 +1,14 @@
-# Reading the demonstrators
+# Reading the examples
 
-Start with `run_experiment` in each `.cpp`. It shows the calculation being compared;
-clock reads, repetition and minimum-time selection live in
-[`support/timing.hpp`](support/timing.hpp).
+Start with the four small examples in [`progression/`](progression/README.md).
+They are deliberately a progression; each adds only one idea:
 
-```cpp
-const auto milliseconds = demo::measure_best(repetitions, [&] {
-    calculate_ladders(book, curves, output);
-});
-```
+1. [`01_present_value.cpp`](progression/01_present_value.cpp) — one fixed-cashflow PV.
+2. [`02_shared_dates.cpp`](progression/02_shared_dates.cpp) — several instruments reuse the same date/discount data.
+3. [`03_risk_row.cpp`](progression/03_risk_row.cpp) — one ordered cashflow traversal produces the whole bucketed risk row.
+4. [`04_wide_risk_row.cpp`](progression/04_wide_risk_row.cpp) — many instruments sharing a schedule form one logical row; SIMD width is only an execution detail.
 
-The lambda is the measured region. Preparation stays outside it unless the example
-is explicitly measuring preparation. The helper does not warm up, clear outputs,
-allocate scratch, or print anything. It also offers `measure_once(work)` and an
-optional `after_each` check which runs after the clock stops. Callers must retain
-and inspect their outputs; a discarded pure return value is not a useful benchmark.
+Read those first. The benchmark programs below are evidence and tuning tools, not the tutorial.
 
 ## Repeated scenario valuation and the date cache
 
