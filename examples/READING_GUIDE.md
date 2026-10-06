@@ -1,14 +1,17 @@
 # Reading the examples
 
-Start with the four small examples in [`progression/`](progression/README.md).
-They are deliberately a progression; each adds only one idea:
+Start with [`progression/`](progression/README.md). It follows the same causal sequence as
+the original scenario-cache prototype, but each step is now a small standalone example:
 
-1. [`01_present_value.cpp`](progression/01_present_value.cpp) — one fixed-cashflow PV.
-2. [`02_shared_dates.cpp`](progression/02_shared_dates.cpp) — several instruments reuse the same date/discount data.
-3. [`03_risk_row.cpp`](progression/03_risk_row.cpp) — one ordered cashflow traversal produces the whole bucketed risk row.
-4. [`04_wide_risk_row.cpp`](progression/04_wide_risk_row.cpp) — many instruments sharing a schedule form one logical row; SIMD width is only an execution detail.
+1. ordinary PV;
+2. scenario-vector curve — one lookup returns a whole row;
+3. sorting/grouping — instruments sharing dates reuse those rows;
+4. bucket-and-tail scan — remove repeated scenarios and produce the whole risk row;
+5. wide schedule row — amortise the date/bucket walk over many SIMD blocks.
 
-Read those first. The benchmark programs below are evidence and tuning tools, not the tutorial.
+The old prototype stated this progression directly as BASE -> scenario vector -> sorted/grouped
+reuse -> LRU cache -> SCAN. That teaching order was good; the new files preserve it without
+making the reader wade through benchmark machinery first.
 
 ## Repeated scenario valuation and the date cache
 
