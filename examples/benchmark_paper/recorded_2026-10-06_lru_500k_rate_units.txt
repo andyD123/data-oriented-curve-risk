@@ -1,0 +1,12 @@
+Fresh validation run, NOT the manuscript's historical 10,921 / 1,310 ms pair.
+Host: Intel Xeon Platinum 8573C cloud container; GCC 14.2.0; AVX-512; one unpinned run.
+Date: 2026-10-06. Command: LRU_ALL=1 LRU_CAPS=64 scenario_bench 500000 0 1
+Current output units: derivative per unit instantaneous-forward-rate shift.
+
+random:  14,450.6 ms, 22,348,094 misses, 33.87% hit rate
+sorted:   1,547.3 ms,     10,500 misses, 99.97% hit rate
+grouped:  1,590.3 ms,      7,020 misses, 99.98% hit rate
+miss floor: 7,020 = 3,480 discount dates + 3,540 projection dates
+grouped/random: 9.1x
+largest difference vs scan: 6.6e-08
+correctness gate: PASS

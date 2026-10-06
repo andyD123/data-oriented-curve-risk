@@ -125,3 +125,31 @@ than representing them as newly certified measurements. The core tests and defau
 library/replay executables are the tested build surface.
 
 No release/publication tag or new automatic CI/hardware-sweep workflow was created.
+
+## Follow-up validation — 6 October 2026
+
+This addendum records later repository changes; it does not rewrite the 4 October review above.
+The follow-up environment was an Intel Xeon Platinum 8573C cloud container with GCC 14.2.0 and AVX-512
+available. QuantLib was not installed.
+
+- `scan_discount` now uses monotone forward/backward boundary cursors: O(N+K) once records are sorted.
+- `bench_paper.cpp` now emits per-unit instantaneous-forward-rate shifts, has an unequal-bucket unit self-check,
+  checks normal and streaming output independently, checks the repeated-valuation baseline, and returns non-zero
+  on a failed gate. The historical 50.91 ms file is retained and labelled as pre-alignment theta units.
+- `hagan_hedge.py` defaults to named `paper7`, excluding the 35y terminal-wave test bond, and uses explicit
+  back-substitution. `extended8` is a separate experiment.
+- Quote-risk generation now emits two quote-bump steps; `quote_risk_check.py` Richardson-extrapolates the direct
+  full-rebootstrap risk and Jacobian and has explicit cross-block/error gates. The checker has a synthetic CTest;
+  a fresh QuantLib generation was not possible here.
+- `write_floor.cpp` provides a reproducible exact-size write reference. The original historical 270 MiB / 15.7 ms
+  source/log is still unavailable and remains labelled historical.
+
+Executed after these changes on the supplied tree before upload: release AVX2/AVX-512 CTest **14/14 passed**,
+including the paper-kernel gate and synthetic quote-risk checker. A portable ASan/UBSan build passed **8/8**.
+The small paper gate gave about 8e-14 discount and 4e-16 projection grouped/scan differences, and BASE/scan
+about 3e-8. Current-source 500k smoke logs are committed separately and are not replacements for historical
+publication timings.
+
+Still outstanding: a fresh QuantLib quote-risk run on a QuantLib-equipped host; recovery or manuscript
+replacement of the exact historical LRU 10,921/1,310 ms run; recovery of the original 15.7 ms write-only and
+431/726/8784 ms adjoint raw logs; a version-matched release tag and an explicit project licence.

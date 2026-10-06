@@ -1,11 +1,13 @@
-# benchmark_paper — the §9 configuration, exactly
+# benchmark_paper — the §9 workload and historical timing record
 
 Reproduces the table in §9 of the paper: 500,000 instruments, half semi-annual fixed-rate bonds and half
 annual-30/360-vs-6M-Act/360 swaps, maturities 1–29y, on the Eonia/Euribor6M curves of QuantLib's
 MulticurveBootstrapping example (`quantlib_example_curves.txt`, 30 + 36 forward buckets), 66 sensitivities
-per instrument, streaming output. This is the standalone kernel the paper's numbers were taken from
-(bench2); the library kernel in `../benchmark` is the same algorithm in library form on a broader book that
-includes compounded-OIS legs, and is reported separately (62.7 ms) — do not mix the two.
+per instrument, streaming output. The current source reports first derivatives per unit
+instantaneous-forward-rate shift, matching the library and manuscript. The committed 50.9 ms record is older:
+that historical executable used interval-integrated-forward coordinates. The two outputs differ only by the
+known bucket-length scaling, but the old timing is kept as historical evidence and is not relabelled as a fresh
+run of the current source. The broader library/OIS workload is separate — do not mix the generations.
 
 ```
 g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -Wno-unused-result bench_paper.cpp -o bench_paper
@@ -14,7 +16,13 @@ g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -Wno-unused-result be
 Recorded run (`recorded_500k.txt`, one Sapphire Rapids core, 2.1 GHz, VM): baseline 57,445 ms; scalar scan
 1,272 ms; 8-lane normal stores 61.4 ms; 8-lane streaming stores 50.9 ms (1.54 ns per sensitivity);
 64,034 groups, 97.6% lane occupancy; GRP vs scalar 3.4e-11; BASE vs scalar 2.7e-8.
-Streaming-store floor for 270 MB on the same core: 15.7 ms (`../../session_artifacts` membw).
+Historical write-only reference: 270 MiB in 15.7 ms on the same core. The original source/log for that
+measurement is not in this repository, so it is context rather than a self-contained reproduction. The
+manuscript also distinguishes 270 MiB from the benchmark's 270,479,616-byte padded output.
+
+`write_floor` is the current reproducible write-only benchmark. Its default byte count is exactly 270,479,616;
+pass `283115520` to measure 270 MiB. `recorded_2026-10-06_write_floor.txt` is a fresh cloud-host run and is
+explicitly not the historical 15.7 ms measurement.
 `recorded_sweep.txt` is the working-set staircase (10k–500k).
 
 ## Adjoint baselines (`adjoint_bench.cpp`)
@@ -27,7 +35,13 @@ Same book and curves. Scalar, one core, replication excluded. `g++ -O3 -std=c++2
 | tape-free N·K overlap adjoint (geometry known) | 726 ms | 22.0 |
 | reverse mode with a recorded tape (~2,500 nodes / instrument) | 8,784 ms | 266 |
 
-All agree to 4e-11. The tape's cost is memory traffic; the geometry-aware N·K adjoint is within 1.7x of the scan at scalar level.
+All agree to 4e-11. The recorded-tape timing includes expression construction, exponentials, tape recording
+and reverse traversal; this experiment does not isolate tape-memory traffic or establish the cost of other AAD
+implementations. The geometry-aware N·K adjoint is within 1.7x of the scan at scalar level.
+
+The original raw log behind the historical 431/726/8784 ms row has not been recovered.
+`recorded_2026-10-06_adjoint_500k.txt` is a fresh current-source run on a different cloud host; it validates the
+comparison and correctness gate but does not replace the historical timings.
 
 ## LRU date cache: grouping trades by shared schedule (`scenario_bench.cpp`)
 
@@ -99,6 +113,12 @@ Malformed arguments, curve files and `LRU_CAPS` values are rejected with a messa
 case and those rejections.
 
 ### Results
+
+The manuscript has used more than one historical VM timing for the 64-column random/sorted comparison.
+The committed raw files are authoritative for their own runs; do not combine rows from different files into a
+single run identity. `recorded_lru_500k_cap64_both_orders.txt`, `recorded_lru_500k.txt` and the tables below are
+distinct observations. The ordering effect is reproducible; absolute VM timings vary substantially.
+
 
 ![LRU date cache, 100,000 trades: time per curve update against cache capacity, random order and grouped by shared schedule](lru_cache_100k.svg)
 

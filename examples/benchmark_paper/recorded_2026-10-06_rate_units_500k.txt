@@ -1,0 +1,15 @@
+Fresh validation run, NOT the paper timing record.
+Source: bench_paper.cpp after alignment to per-unit instantaneous-forward-rate shifts.
+Host: Intel Xeon Platinum 8573C cloud container; GCC 14.2.0; one unpinned run; baseline disabled.
+Date: 2026-10-06.
+
+N=500000 instruments, 3480 signatures, 37.5 cashflows/instrument, K=30+36
+GRP normal vs SCAN: max rel diff OIS 7.17e-11, projection 4.17e-16
+GRP stream vs SCAN: max rel diff OIS 7.17e-11, projection 4.17e-16; normal/stream 0.00e+00
+SCAN 1479.33 ms
+GRP normal 194.20 ms
+GRP streaming 368.93 ms
+tables 0.20 ms
+unique dates 3540; groups 64034; padded output 270 MB
+correctness gate: PASS
+Absolute timings on this cloud host are not substitutes for the historical paper run.

@@ -15,6 +15,8 @@ adjoint and aggregation experiments. These now use short named operations and a 
 `measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
 This is a readability pass on those three examples, not a rewrite of the scan library.
 
+For paper claims and their exact commands/records, see [Paper claim -> code and evidence](docs/PAPER_EVIDENCE.md).
+
 ## Wide schedule-group experiment
 
 An opt-in example tests whether instruments sharing one schedule should be grouped independently
@@ -164,11 +166,12 @@ curve values. Factors must be finite and positive. Output has
 `ladder/aligned_memory.hpp` provides matching aligned allocation/deallocation.
 Public layout internals must not be manually corrupted; buffer lengths remain caller obligations.
 
-Preparation is separate from kernel work. The current scalar discount implementation
-uses a binary-search bucket lookup per record: **O(N log K + K)** once sorted, not an
-unqualified O(N+K) algorithm. Grouped discount column walks are linear in columns plus
-waves per group; coupon preparation and projection coupon/wave overlaps add their own
-work. Layout construction, sorting and curve/date-table refresh are not free.
+Preparation is separate from kernel work. With discount records already time-sorted,
+`scan_discount` advances one monotone bucket cursor in the forward pass and one boundary
+cursor in the backward pass: **O(N+K)** for N records and K waves. Projection risk still
+visits the wave intervals crossed by each fixing period, so its cost depends on support
+width. Layout construction, sorting, coupon replication and curve/date-table refresh are
+separate costs.
 
 ## Supported formulas and QuantLib examples
 
@@ -211,6 +214,11 @@ no longer imposes GNU/x86 flags, and its core tests/benchmark use C++ aligned ne
 but that is not a claim of tested portability on those unexecuted systems.
 
 Existing `recorded_*` files remain historical evidence, not results of this review.
+`examples/benchmark_paper/recorded_500k.txt` predates the October 2026 rate-unit alignment:
+that historical run emitted interval-integrated-forward (`theta`) sensitivities. Current
+`bench_paper.cpp` emits the manuscript/library convention, per unit additive instantaneous-
+forward shift (`delta`). The old timing is retained and labelled rather than silently
+reinterpreted; rerun the current source before attaching a new timing to it.
 Keep the standalone `examples/benchmark_paper` workload separate from the broader
 `examples/benchmark` library/OIS workload and its seasoned-book revision. The historical
 paper's approximately 50.9 ms, older OIS-inclusive approximately 62.7 ms and later

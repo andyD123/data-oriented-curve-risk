@@ -1,0 +1,12 @@
+Fresh validation run, NOT the historical 270 MiB / 15.7 ms paper reference.
+Host: Intel Xeon Platinum 8573C cloud container; GCC 14.2.0; unpinned, best of 5.
+Date: 2026-10-06.
+Source: write_floor.cpp, pages prefaulted outside timing, AVX-512 non-temporal stores plus sfence.
+
+Exact current padded 500k output:
+270479616 bytes (257.95 MiB): 11.922 ms, 22.69 GB/s
+
+Historical byte count for comparison:
+283115520 bytes (270.00 MiB): 12.233 ms, 23.14 GB/s
+
+Different host: these do not replace the historical 15.7 ms record.
