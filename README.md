@@ -15,6 +15,22 @@ adjoint and aggregation experiments. These now use short named operations and a 
 `measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
 This is a readability pass on those three examples, not a rewrite of the scan library.
 
+## Wide schedule-group experiment
+
+An opt-in example tests whether instruments sharing one schedule should be grouped independently
+of the hardware SIMD width. Instead of making one logical group equal to one eight-double vector,
+one schedule group may contain many eight-lane blocks driven by the same date/bucket traversal.
+
+On a controlled 65,536-instrument, 60-cashflow, 40-bucket workload, the prototype reduced the
+streaming-store AVX-512 kernel from 5.724 ms at logical width 8 to 2.675 ms at width 2,048
+(2.14x), with every wider grouping reconciled against the width-8 output. AVX2 runs showed the
+same broad effect. This remains an architectural experiment rather than the production
+discount+projection path.
+
+Build it with `-DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON`. See
+[docs/WIDE_SCHEDULE_GROUPS.md](docs/WIDE_SCHEDULE_GROUPS.md) for the implementation,
+measurements, interpretation, limitations and reproduction command.
+
 ## Build and open in CLion
 
 Open the repository root: `CMakeLists.txt` is here, not inside an archive or wrapper directory.
