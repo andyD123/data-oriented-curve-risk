@@ -1,3 +1,5 @@
+# Historical timing record: this run predates the 2026-10 rate-unit alignment and emitted interval-integrated-forward (theta) sensitivities.
+# Current bench_paper.cpp emits per-unit instantaneous-forward-rate shifts; the old timing is retained as historical evidence, not silently relabelled.
 N=500000 instruments, 3480 signatures, 37.5 cashflows/instrument, K=30+36 (Eonia+Euribor6M nodes from the QuantLib example)
 GRP vs SCAN: max rel diff OIS 7.17e-11, projection 4.46e-16
 BASE vs SCAN (central diff, eps=1e-5, values > 1e4): max rel diff OIS 2.13e-08, projection 4.60e-09

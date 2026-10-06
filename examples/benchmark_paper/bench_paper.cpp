@@ -7,7 +7,8 @@
 //   GRP   instruments grouped 8-wide by schedule signature, shared D(t) over unique dates,
 //         AVX-512 via std::experimental::simd, one column walk per group, normal or streaming stores.
 //
-// Curve model: log-linear on node discount factors, internal coordinate theta_k = -log(D_k/D_{k-1}).
+// Curve model: log-linear on node discount factors. Public risk output is per unit
+// additive instantaneous-forward shift on each interval, matching ladder::Stencils.
 #include <experimental/simd>
 #include <immintrin.h>
 #include <algorithm>
@@ -38,21 +39,43 @@ struct Curve {
         return std::max(1, std::min(k, K()));
     }
     double alpha(int k, double t) const { return (t - B[k-1]) / (B[k] - B[k-1]); }
+    double len(int k) const { return B[k] - B[k-1]; }
+    double overlap(int k, double t) const {
+        return std::min(std::max(t - B[k-1], 0.0), len(k));
+    }
     double df(double t) const {
         int k = bucket(t);
         return std::exp(logD[k-1] + alpha(k, t) * (logD[k] - logD[k-1]));
     }
-    double psi(int k, double t) const {
-        if (t < B[k-1]) return 0.0;
-        if (t >= B[k])  return -1.0;
-        return -alpha(k, t);
-    }
-    Curve bumped(int k, double eps) const {           // theta_k += eps  <=>  D_j *= exp(-eps), j>=k
+    double psi(int k, double t) const { return -overlap(k, t); }
+    Curve bumped(int k, double eps) const {           // f_k += eps on [B[k-1], B[k])
         Curve c = *this;
-        for (int j = k; j <= K(); ++j) { c.D[j] *= std::exp(-eps); c.logD[j] = std::log(c.D[j]); }
+        const double factor = std::exp(-eps * len(k));
+        for (int j = k; j <= K(); ++j) {
+            c.D[j] *= factor;
+            c.logD[j] = std::log(c.D[j]);
+        }
         return c;
     }
 };
+static void check_rate_shift_units()
+{
+    Curve curve;
+    curve.B = {0.0, 2.0, 5.0};
+    curve.D = {1.0, 0.96, 0.90};
+    curve.logD = {std::log(1.0), std::log(0.96), std::log(0.90)};
+    if (std::fabs(curve.psi(1, 3.0) + 2.0) > 1e-15
+        || std::fabs(curve.psi(2, 3.0) + 1.0) > 1e-15) {
+        throw std::runtime_error("bench_paper: forward-rate unit self-check failed");
+    }
+    const auto shifted = curve.bumped(1, 1e-4);
+    const double expected = std::exp(-2e-4);
+    if (std::fabs(shifted.D[1] / curve.D[1] - expected) > 1e-15
+        || std::fabs(shifted.D[2] / curve.D[2] - expected) > 1e-15) {
+        throw std::runtime_error("bench_paper: bump scaling self-check failed");
+    }
+}
+
 // curves from the QuantLib MulticurveBootstrapping example (cashflows2.txt written by ql_examples.cpp)
 static void load_curves(const char* path, Curve& ois, Curve& proj) {
     FILE* in = std::fopen(path, "r"); int nc; std::fscanf(in, "%d", &nc);
@@ -188,7 +211,7 @@ static void scan_risk(std::vector<ScanInstrument>& insts, const Curve& ois, cons
         for (size_t j = 0; j < n; ++j) {
             int k = ois.bucket(in.t[j]);
             x[j] = in.c[j] * ois.df(in.t[j]);
-            interior[k] += x[j] * ois.alpha(k, in.t[j]);
+            interior[k] += x[j] * (in.t[j] - ois.B[k-1]);
         }
         double running = 0; int k = Ko;
         for (size_t j = n; j-- > 0;) {
@@ -197,7 +220,7 @@ static void scan_risk(std::vector<ScanInstrument>& insts, const Curve& ois, cons
         }
         while (k >= 1) { suffix[k] = running; --k; }
         double* o = out_ois + i * Ko;
-        for (int kk = 1; kk <= Ko; ++kk) o[kk-1] = -(interior[kk] + suffix[kk]);
+        for (int kk = 1; kk <= Ko; ++kk) o[kk-1] = -(interior[kk] + ois.len(kk) * suffix[kk]);
         double* p = out_proj + i * Kp;
         for (int kk = 0; kk < Kp; ++kk) p[kk] = 0;
         for (auto& f : in.flt) {
@@ -284,14 +307,14 @@ static GroupLayout build_group_layout(const std::vector<std::unique_ptr<Instrume
 }
 
 // shared D(t) and P(t) over unique dates, plus bucket / alpha per date (date-local refresh phase)
-struct DateTables { std::vector<double> D, P, alpha, t; std::vector<int> bucket, pbucket; };
+struct DateTables { std::vector<double> D, P, inside, t; std::vector<int> bucket, pbucket; };
 static DateTables build_date_tables(const GroupLayout& L, const Curve& ois, const Curve& proj)
 {
     DateTables T; size_t n = L.unique_days.size();
-    T.D.resize(n); T.P.resize(n); T.alpha.resize(n); T.t.resize(n); T.bucket.resize(n); T.pbucket.resize(n);
+    T.D.resize(n); T.P.resize(n); T.inside.resize(n); T.t.resize(n); T.bucket.resize(n); T.pbucket.resize(n);
     for (size_t i = 0; i < n; ++i) {
         double t = L.unique_days[i] / DAYS; int k = ois.bucket(t);
-        T.t[i] = t; T.bucket[i] = k; T.pbucket[i] = proj.bucket(t); T.alpha[i] = ois.alpha(k, t); T.D[i] = ois.df(t); T.P[i] = proj.df(t);
+        T.t[i] = t; T.bucket[i] = k; T.pbucket[i] = proj.bucket(t); T.inside[i] = t - ois.B[k-1]; T.D[i] = ois.df(t); T.P[i] = proj.df(t);
     }
     return T;
 }
@@ -327,7 +350,7 @@ static void group_risk(GroupLayout& L, const DateTables& T, const Curve& ois, co
         // bucket b is accumulated while k == b-1; its suffix (tail >= B_b) was captured on entry
         vec8 running = 0.0, interior = 0.0, suffix_cur = 0.0;
         int k = Ko; int q = nf - 1;
-        auto emit = [&](int b) { if (b <= Ko) { vec8 r = -(interior + suffix_cur); store8<STREAM>(out_ois + (b - 1) * LANES, r); } };
+        auto emit = [&](int b) { if (b <= Ko) { vec8 r = -(interior + suffix_cur * ois.len(b)); store8<STREAM>(out_ois + (b - 1) * LANES, r); } };
         for (int ci = (int)G.cols.size() - 1; ci >= 0; --ci) {
             const int di = G.cols[ci].di;
             const double t = T.t[di];
@@ -336,7 +359,7 @@ static void group_risk(GroupLayout& L, const DateTables& T, const Curve& ois, co
             while (q >= 0 && G.fcol_to_col[q] == ci) { cf += famt[q]; --q; }
             vec8 x = cf * T.D[di];
             running += x;
-            interior += x * T.alpha[di];
+            interior += x * T.inside[di];
         }
         while (k >= 1) { emit(k + 1); suffix_cur = running; interior = 0.0; --k; }
         emit(1);
@@ -370,6 +393,7 @@ static double max_rel(const double* a, const double* b, size_t n, double floor_a
 int main(int argc, char** argv)
 {
     enter_example_dir();
+    check_rate_shift_units();
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000;
     int run_base = argc > 2 ? std::atoi(argv[2]) : 1;
     int reps = argc > 3 ? std::atoi(argv[3]) : 3;
@@ -395,27 +419,44 @@ int main(int argc, char** argv)
     auto L = build_group_layout(book, sigs);
     double t_grp_layout = now_ms() - t0;
     const size_t stride = (size_t)(Ko + Kp) * LANES;
-    double* out_g = (double*)ladder::allocate_aligned(L.groups.size() * stride * sizeof(double));
+    const size_t grouped_values = L.groups.size() * stride;
+    double* out_g_normal = (double*)ladder::allocate_aligned(grouped_values * sizeof(double));
+    double* out_g_stream = (double*)ladder::allocate_aligned(grouped_values * sizeof(double));
     double best_tab = 1e30, best_grp_n = 1e30, best_grp_s = 1e30;
     DateTables T;
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); T = build_date_tables(L, ois, proj); best_tab = std::min(best_tab, now_ms() - t0); }
-    for (int r = 0; r < reps; ++r) { t0 = now_ms(); group_risk<false>(L, T, ois, proj, out_g); best_grp_n = std::min(best_grp_n, now_ms() - t0); }
-    for (int r = 0; r < reps; ++r) { t0 = now_ms(); group_risk<true>(L, T, ois, proj, out_g); best_grp_s = std::min(best_grp_s, now_ms() - t0); }
+    for (int r = 0; r < reps; ++r) { t0 = now_ms(); group_risk<false>(L, T, ois, proj, out_g_normal); best_grp_n = std::min(best_grp_n, now_ms() - t0); }
+    for (int r = 0; r < reps; ++r) { t0 = now_ms(); group_risk<true>(L, T, ois, proj, out_g_stream); best_grp_s = std::min(best_grp_s, now_ms() - t0); }
 
-    // GRP vs SCAN check (gather per instrument)
-    double m_ois = 0, m_proj = 0;
-    for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) {
-        int i = L.groups[gi].first_inst[l];
-        for (int k = 0; k < Ko; ++k) {
-            double a = out_g[gi * stride + k * LANES + l], b = out_ois_s[i * Ko + k];
-            double s = std::max(std::fabs(a), std::fabs(b)); if (s > 1.0) m_ois = std::max(m_ois, std::fabs(a-b)/s);
+    auto grouped_error = [&](const double* grouped) {
+        double m_ois = 0, m_proj = 0;
+        for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) {
+            int i = L.groups[gi].first_inst[l];
+            for (int k = 0; k < Ko; ++k) {
+                double a = grouped[gi * stride + k * LANES + l], b = out_ois_s[i * Ko + k];
+                double scale = std::max(std::fabs(a), std::fabs(b));
+                if (scale > 1.0) m_ois = std::max(m_ois, std::fabs(a-b)/scale);
+            }
+            for (int k = 0; k < Kp; ++k) {
+                double a = grouped[gi * stride + Ko * LANES + k * LANES + l], b = out_proj_s[i * Kp + k];
+                double scale = std::max(std::fabs(a), std::fabs(b));
+                if (scale > 1.0) m_proj = std::max(m_proj, std::fabs(a-b)/scale);
+            }
         }
-        for (int k = 0; k < Kp; ++k) {
-            double a = out_g[gi * stride + Ko * LANES + k * LANES + l], b = out_proj_s[i * Kp + k];
-            double s = std::max(std::fabs(a), std::fabs(b)); if (s > 1.0) m_proj = std::max(m_proj, std::fabs(a-b)/s);
-        }
+        return std::pair<double,double>{m_ois, m_proj};
+    };
+    const auto normal_error = grouped_error(out_g_normal);
+    const auto stream_error = grouped_error(out_g_stream);
+    double store_error = 0.0;
+    bool finite = true;
+    for (size_t i = 0; i < grouped_values; ++i) {
+        finite = finite && std::isfinite(out_g_normal[i]) && std::isfinite(out_g_stream[i]);
+        const double scale = std::max({1.0, std::fabs(out_g_normal[i]), std::fabs(out_g_stream[i])});
+        store_error = std::max(store_error, std::fabs(out_g_normal[i] - out_g_stream[i]) / scale);
     }
-    std::printf("GRP vs SCAN: max rel diff OIS %.2e, projection %.2e\n", m_ois, m_proj);
+    std::printf("GRP normal vs SCAN: max rel diff OIS %.2e, projection %.2e\n", normal_error.first, normal_error.second);
+    std::printf("GRP stream vs SCAN: max rel diff OIS %.2e, projection %.2e; normal/stream %.2e\n",
+                stream_error.first, stream_error.second, store_error);
 
     // --- BASE
     double t_base = -1, m_bo = 0, m_bp = 0;
@@ -438,6 +479,15 @@ int main(int argc, char** argv)
     row("GRP  tables + streaming kernel", best_tab + best_grp_s);
     std::printf("\none-off layout builds: scan %.1f ms, group %.1f ms; unique dates %zu; groups %zu; output %.0f MB\n",
                 t_scan_layout, t_grp_layout, L.unique_days.size(), L.groups.size(), L.groups.size() * stride * 8 / 1e6);
-    ladder::free_aligned(out_g);
-    return 0;
+
+    const bool grouped_ok = finite
+        && normal_error.first <= 1e-8 && normal_error.second <= 1e-8
+        && stream_error.first <= 1e-8 && stream_error.second <= 1e-8
+        && store_error <= 1e-12;
+    const bool baseline_ok = !run_base || (m_bo <= 1e-6 && m_bp <= 1e-6);
+    std::printf("correctness gate: %s (rate-shift units; both store policies checked)\n",
+                grouped_ok && baseline_ok ? "PASS" : "FAIL");
+    ladder::free_aligned(out_g_normal);
+    ladder::free_aligned(out_g_stream);
+    return grouped_ok && baseline_ok ? 0 : 1;
 }
