@@ -1,87 +1,194 @@
+// Compare the library scan, direct overlap summation and an illustrative tape.
+// Each computes first derivatives per unit forward-rate shift. Record preparation
+// is outside the timings; the direct and tape implementations remain independent
+// of the library's scan traversal. Historical results are not rerun by this edit.
 #include "../example_dir.hpp"
-// Adjoint baselines for §9: per-instrument reverse-mode derivative of PV(delta) = sum_i x_i exp(-sum_k delta_k ov_ki)
-// at delta = 0, on the paper's benchmark book and curves (bonds + vanilla swaps, Eonia/Euribor example curves).
-//   TAPE   generic reverse-mode: forward pass records one node per (cashflow, wave) exp and multiply, with the local
-//          derivative; reverse pass walks the tape backwards accumulating adjoints. What an operator-overloading AAD
-//          tool does for this valuation.
-//   DIRECT tape-free N*K overlap adjoint: d/ddelta_k = -sum_i x_i ov_ki, computed with the geometry known. The
-//          optimistic bound for any adjoint engine that still treats each (cashflow, wave) pair.
-//   SCAN   the scalar reverse scan (ladder/scan.hpp), N+K.
-// Same instruments as examples/benchmark_paper (generator copied), unit cashflows replicated once; timings exclude replication.
-#include <chrono>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <random>
-#include <vector>
-#include "ladder/stencil.hpp"
-#include "ladder/scan.hpp"
+#include "../support/curve_input.hpp"
+#include "../support/input.hpp"
+#include "../support/timing.hpp"
+#include "recorded_adjoint.hpp"
 #include "ladder/replicate.hpp"
-using namespace ladder;
-constexpr double DPY = 365.0;
-struct Curve { Stencils S; std::vector<double> logD; double df(double t) const { int k = S.bucket(t); double a = (t - S.B[k-1]) / S.len(k); return std::exp(logD[k-1] + a * (logD[k] - logD[k-1])); } };
-static Curve read_curve(FILE* in) { char nm[16]; int n; (void)std::fscanf(in, "%15s %d", nm, &n); Curve c; c.S.B.resize(n); c.logD.resize(n); for (int i = 0; i < n; ++i) { double t, D; (void)std::fscanf(in, "%lf %lf", &t, &D); c.S.B[i] = t; c.logD[i] = std::log(D); } return c; }
-static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+#include <random>
 
-struct TapeNode { int kind; int a, b; double w; };   // kind 0: y = exp(w * delta_b)  (a: unused)   kind 1: z = x_a * y_b ... simplified below
-int main(int argc, char** argv) {
-    enter_example_dir();
-    size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000; int reps = argc > 2 ? std::atoi(argv[2]) : 3;
-    FILE* in = std::fopen("quantlib_example_curves.txt", "r"); int nc; (void)std::fscanf(in, "%d", &nc); Curve cd = read_curve(in), cp = read_curve(in); std::fclose(in);
-    auto df = [&](double t){ return cd.df(t); }; auto pf = [&](double t){ return cp.df(t); };
-    const int Kd = cd.S.K(), Kp = cp.S.K();
-    // ---- same generator as the paper benchmark (bonds + vanilla swaps)
-    std::mt19937_64 rng(42); std::uniform_int_distribution<int> start_d(2, 61), years_d(1, 29), type_d(0, 1); std::uniform_real_distribution<double> rate_d(0.01, 0.06);
-    const double notionals[] = {1e6, 2.5e6, 5e6, 1e7};
-    std::vector<std::vector<UnitCashflow>> ucf(N); std::vector<std::vector<ProjectionTerm>> pt(N);
-    for (size_t i = 0; i < N; ++i) {
-        int s = start_d(rng), y = years_d(rng), ty = type_d(rng); double notional = notionals[rng() % 4], r = rate_d(rng);
-        auto day = [&](int n, int per_year){ return s + (int)std::lround(n * 365.25 / per_year); };
-        if (ty == 0) for (int j = 1; j <= 2*y; ++j) replicate_fixed(notional * r / 2 + (j == 2*y ? notional : 0.0), day(j, 2) / DPY, df, ucf[i]);
-        else { for (int j = 1; j <= y; ++j) replicate_fixed(-notional * r, day(j, 1) / DPY, df, ucf[i]);
-               for (int j = 1; j <= 2*y; ++j) replicate_ibor(notional, day(j-1, 2) / DPY, day(j, 2) / DPY, day(j, 2) / DPY, df, pf, ucf[i], pt[i]); }
-        sort_by_time(ucf[i]);
-    }
-    std::vector<double> out_s(N * (Kd + Kp)), out_d(N * (Kd + Kp)), out_t(N * (Kd + Kp));
-    // ---- SCAN
-    double best_scan = 1e30;
-    for (int r = 0; r < reps; ++r) { double t0 = now_ms(); for (size_t i = 0; i < N; ++i) { scan_discount(cd.S, ucf[i], &out_s[i*(Kd+Kp)]); scan_projection(cp.S, pt[i], &out_s[i*(Kd+Kp)+Kd]); } best_scan = std::min(best_scan, now_ms() - t0); }
-    // ---- DIRECT N*K overlap adjoint (no tape): discount waves over unit cashflows; projection waves over coupon terms
-    double best_direct = 1e30;
-    for (int r = 0; r < reps; ++r) { double t0 = now_ms();
-        for (size_t i = 0; i < N; ++i) { double* o = &out_d[i*(Kd+Kp)];
-            for (int k = 1; k <= Kd; ++k) { double a = 0; for (auto& c : ucf[i]) a -= c.x * cd.S.overlap(k, c.t); o[k-1] = a; }
-            for (int k = 1; k <= Kp; ++k) { double a = 0; for (auto& q : pt[i]) a += q.w * (cp.S.psi(k, q.a) - cp.S.psi(k, q.b)); o[Kd+k-1] = a; } }
-        best_direct = std::min(best_direct, now_ms() - t0); }
-    // ---- TAPE reverse mode: per instrument, forward pass records nodes, reverse pass accumulates adjoints
-    struct Node { int input; double dloc; int parent; };   // value node v = f(parent, delta[input]) with local derivative dloc wrt delta[input]; PV accumulates leaf products
-    std::vector<Node> tape; std::vector<double> vals, adj; tape.reserve(1 << 20); vals.reserve(1 << 20); adj.reserve(1 << 20);
-    double best_tape = 1e30;
-    for (int r = 0; r < reps; ++r) { double t0 = now_ms();
-        for (size_t i = 0; i < N; ++i) {
-            double* o = &out_t[i*(Kd+Kp)]; for (int k = 0; k < Kd + Kp; ++k) o[k] = 0;
-            tape.clear(); vals.clear();
-            // forward: for each unit cashflow, chain y_0 = x_i; y_k = y_{k-1} * exp(-delta_k ov_k)  (at delta=0 exp=1); PV += y_Kd
-            std::vector<int> leaves; leaves.reserve(ucf[i].size() + pt[i].size());
-            for (auto& c : ucf[i]) { int prev = -1; double v = c.x;
-                for (int k = 1; k <= Kd; ++k) { double ov = cd.S.overlap(k, c.t); double e = std::exp(-0.0 * ov); v = v * e; tape.push_back({k - 1, -ov * e, prev}); vals.push_back(v); prev = (int)tape.size() - 1; }
-                leaves.push_back(prev); }
-            for (auto& q : pt[i]) { int prev = -1; double v = q.w;
-                for (int k = 1; k <= Kp; ++k) { double ov = -(cp.S.psi(k, q.a) - cp.S.psi(k, q.b)); double e = std::exp(-0.0 * ov); v = v * e; tape.push_back({Kd + k - 1, -ov * e, prev}); vals.push_back(v); prev = (int)tape.size() - 1; }
-                leaves.push_back(prev); }
-            // reverse: adjoint of PV wrt each node value = 1 at leaves; propagate backwards through the chain
-            adj.assign(tape.size(), 0.0); for (int l : leaves) adj[l] = 1.0;
-            for (int n = (int)tape.size() - 1; n >= 0; --n) { const Node& nd = tape[n]; double a = adj[n]; if (a == 0.0) continue;
-                // v_n = v_parent * e_n  => dv_n/ddelta = v_parent * dloc ; dv_n/dv_parent = e_n (=1 at delta 0)
-                double vparent = nd.parent >= 0 ? vals[nd.parent] : vals[n]; // root: v_parent is x itself (vals[n]/e = vals[n])
-                o[nd.input] += a * vparent * nd.dloc;
-                if (nd.parent >= 0) adj[nd.parent] += a; }
+namespace adjoint_demo {
+namespace {
+
+struct RiskRecords {
+    std::vector<ladder::UnitCashflow> discount;
+    std::vector<ladder::ProjectionTerm> projection;
+};
+
+RiskRecords make_instrument_records(const demo::CurvePair& curves, int start, int years,
+                                   int type, double notional, double rate)
+{
+    const auto time = [start](int period, int frequency) {
+        return (start + static_cast<int>(std::lround(period * 365.25 / frequency))) / 365.0;
+    };
+    const auto discount = [&](double t) { return curves.discount.discount(t); };
+    const auto projection = [&](double t) { return curves.projection.discount(t); };
+    RiskRecords records;
+    if (type == 0) {
+        for (int period = 1; period <= 2 * years; ++period) {
+            const double redemption = period == 2 * years ? notional : 0.0;
+            ladder::replicate_fixed(notional * rate / 2 + redemption,
+                                    time(period, 2), discount, records.discount);
         }
-        best_tape = std::min(best_tape, now_ms() - t0); }
-    double w1 = 0, w2 = 0; for (size_t j = 0; j < out_s.size(); ++j) { double s = std::max(1.0, std::fabs(out_s[j])); w1 = std::max(w1, std::fabs(out_d[j]-out_s[j])/s); w2 = std::max(w2, std::fabs(out_t[j]-out_s[j])/s); }
-    const double nout = (double)N * (Kd + Kp);
-    std::printf("N=%zu bonds+vanilla swaps, %d+%d waves; direct vs scan %.1e, tape vs scan %.1e\n", N, Kd, Kp, w1, w2);
-    std::printf("%-40s %10.1f ms %9.2f ns/sensitivity\n", "SCAN  scalar reverse scan (N+K)", best_scan, best_scan*1e6/nout);
-    std::printf("%-40s %10.1f ms %9.2f ns/sensitivity\n", "DIRECT N*K overlap adjoint, no tape", best_direct, best_direct*1e6/nout);
-    std::printf("%-40s %10.1f ms %9.2f ns/sensitivity  (tape nodes/instrument ~%zu)\n", "TAPE  reverse mode with recorded tape", best_tape, best_tape*1e6/nout, tape.size());
+    } else {
+        for (int period = 1; period <= years; ++period) {
+            ladder::replicate_fixed(-notional * rate, time(period, 1), discount, records.discount);
+        }
+        for (int period = 1; period <= 2 * years; ++period) {
+            ladder::replicate_ibor(notional, time(period - 1, 2), time(period, 2), time(period, 2),
+                                   discount, projection, records.discount, records.projection);
+        }
+    }
+    ladder::sort_by_time(records.discount);
+    return records;
+}
+
+std::vector<RiskRecords> make_risk_records(std::size_t count, const demo::CurvePair& curves)
+{
+    std::mt19937_64 random(42);
+    std::uniform_int_distribution<int> start_day(2, 61), years(1, 29), type(0, 1);
+    std::uniform_real_distribution<double> coupon_rate(0.01, 0.06);
+    const double notionals[] = {1e6, 2.5e6, 5e6, 1e7};
+    std::vector<RiskRecords> book(count);
+    for (auto& instrument : book) {
+        // Preserve the random draw order of this demonstrator, not bench_paper's
+        // different generator. The two books share a specification, not every draw.
+        const int start = start_day(random);
+        const int maturity = years(random);
+        const int kind = type(random);
+        const double notional = notionals[random() % 4];
+        const double rate = coupon_rate(random);
+        instrument = make_instrument_records(curves, start, maturity, kind, notional, rate);
+    }
+    return book;
+}
+
+void scan_gradient(const demo::CurvePair& curves, const RiskRecords& instrument,
+                   std::span<double> gradient)
+{
+    ladder::scan_discount(curves.discount.waves, instrument.discount, gradient.data());
+    ladder::scan_projection(curves.projection.waves, instrument.projection,
+                            gradient.data() + curves.discount.waves.K());
+}
+
+void direct_gradient(const demo::CurvePair& curves, const RiskRecords& instrument,
+                     std::span<double> gradient)
+{
+    const auto& discount = curves.discount.waves;
+    const auto& projection = curves.projection.waves;
+    for (int wave = 1; wave <= discount.K(); ++wave) {
+        double total = 0.0;
+        for (const auto& cashflow : instrument.discount) {
+            total -= cashflow.x * discount.overlap(wave, cashflow.t);
+        }
+        gradient[wave - 1] = total;
+    }
+    for (int wave = 1; wave <= projection.K(); ++wave) {
+        double total = 0.0;
+        for (const auto& coupon : instrument.projection) {
+            total += coupon.w * (projection.psi(wave, coupon.a) - projection.psi(wave, coupon.b));
+        }
+        gradient[discount.K() + wave - 1] = total;
+    }
+}
+
+template<class Calculate>
+void calculate_ladders(const std::vector<RiskRecords>& book, int waves,
+                       std::vector<double>& output, Calculate&& calculate)
+{
+    for (std::size_t index = 0; index < book.size(); ++index) {
+        const std::span<double> row(output.data() + index * waves, static_cast<std::size_t>(waves));
+        calculate(book[index], row);
+    }
+}
+
+double largest_difference(const std::vector<double>& actual, const std::vector<double>& expected)
+{
+    double largest = 0.0;
+    for (std::size_t index = 0; index < actual.size(); ++index) {
+        if (!std::isfinite(actual[index]) || !std::isfinite(expected[index])) {
+            throw std::runtime_error("non-finite adjoint result");
+        }
+        const double scale = std::max(1.0, std::fabs(expected[index]));
+        largest = std::max(largest, std::fabs(actual[index] - expected[index]) / scale);
+    }
+    return largest;
+}
+
+void print_results(std::size_t instruments, const demo::CurvePair& curves,
+                   double scan_ms, double direct_ms, double tape_ms,
+                   double direct_error, double tape_error, std::size_t tape_nodes)
+{
+    const double output_count = double(instruments) * curves.wave_count();
+    std::printf("N=%zu bonds+vanilla swaps, %d+%d waves; direct vs scan %.1e, tape vs scan %.1e
+",
+        instruments, curves.discount.waves.K(), curves.projection.waves.K(), direct_error, tape_error);
+    const auto row = [&](const char* name, double milliseconds) {
+        std::printf("%-40s %10.1f ms %9.2f ns/sensitivity
+",
+                    name, milliseconds, milliseconds * 1e6 / output_count);
+    };
+    row("SCAN  scalar library scan", scan_ms);
+    row("DIRECT N*K overlap adjoint, no tape", direct_ms);
+    row("TAPE  reverse mode with recorded tape", tape_ms);
+    std::printf("tape nodes in the final instrument: %zu
+", tape_nodes);
+    std::printf("correctness gate: PASS (finite results; scaled difference <= 1e-8)
+");
+}
+
+int run_experiment(std::size_t count, int repetitions)
+{
+    const auto curves = demo::read_curves("quantlib_example_curves.txt");
+    const auto book = make_risk_records(count, curves);
+    std::vector<double> scan(count * curves.wave_count());
+    std::vector<double> direct(scan.size());
+    std::vector<double> recorded(scan.size());
+    TapeWorkspace tape;
+
+    const auto scan_ms = demo::measure_best(repetitions, [&] {
+        calculate_ladders(book, curves.wave_count(), scan,
+            [&](const auto& instrument, auto row) { scan_gradient(curves, instrument, row); });
+    });
+    const auto direct_ms = demo::measure_best(repetitions, [&] {
+        calculate_ladders(book, curves.wave_count(), direct,
+            [&](const auto& instrument, auto row) { direct_gradient(curves, instrument, row); });
+    });
+    const auto tape_ms = demo::measure_best(repetitions, [&] {
+        calculate_ladders(book, curves.wave_count(), recorded, [&](const auto& instrument, auto row) {
+            recorded_gradient(curves.discount.waves, curves.projection.waves,
+                               instrument.discount, instrument.projection, row, tape);
+        });
+    });
+
+    const auto direct_error = largest_difference(direct, scan);
+    const auto tape_error = largest_difference(recorded, scan);
+    if (direct_error > 1e-8 || tape_error > 1e-8) {
+        throw std::runtime_error("adjoint comparison failed");
+    }
+    print_results(count, curves, scan_ms, direct_ms, tape_ms,
+                  direct_error, tape_error, tape.nodes.size());
+    return 0;
+}
+
+} // namespace
+} // namespace adjoint_demo
+
+int main(int argc, char** argv)
+{
+    try {
+        enter_example_dir();
+        constexpr auto usage = "usage: adjoint_bench [N=1..10000000] [reps=1..1000]";
+        if (argc > 3) throw std::invalid_argument(usage);
+        const auto count = argc > 1 ? demo::read_count(argv[1], 1, 10000000, usage) : 100000;
+        const auto repeats = argc > 2 ? demo::read_count(argv[2], 1, 1000, usage) : 3;
+        return adjoint_demo::run_experiment(count, static_cast<int>(repeats));
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "adjoint_bench: %s
+", error.what());
+        return 1;
+    }
 }

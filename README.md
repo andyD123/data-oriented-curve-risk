@@ -8,6 +8,13 @@ The library computes first-order sensitivity to interval-forward **waves**. The 
 definition and its separation from curve stripping are due to Hagan. The contribution
 here is the data-oriented organisation: shared dates, grouped instruments and reverse scans.
 
+## Reading the examples
+
+The [demonstrator reading guide](examples/READING_GUIDE.md) points to the scenario-cache,
+adjoint and aggregation experiments. These now use short named operations and a small
+`measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
+This is a readability pass on those three examples, not a rewrite of the scan library.
+
 ## Build and open in CLion
 
 Open the repository root: `CMakeLists.txt` is here, not inside an archive or wrapper directory.
@@ -37,10 +44,11 @@ unknown backend names are configuration errors. Normal/streaming store equivalen
 tested within each configuration, not claimed as cross-backend bitwise reproducibility.
 STDX can use x86 streaming stores when its target supports them; portable loops cannot.
 
-Default targets (single-ISA build) are `test_ladder`, `test_boundaries`, `bench_library`, `aggregation` and `scan_wave`; the `release` preset builds the vectorised ones as `_avx2` and `_avx512` pairs (below).
+Default targets (single-ISA build) are `test_ladder`, `test_boundaries`, `test_demo_support`, `bench_library`, `aggregation` and `scan_wave`; the `release` preset builds the vectorised ones as `_avx2` and `_avx512` pairs (below).
 CTest runs the original suite, independent boundary/oracle tests and a small benchmark
 correctness gate. With Python 3 installed it also runs an isolated wave-fixture replay
-and malformed-input checks (standard library only; four CTest tests in total). The `release`
+and malformed-input checks (standard library only). Demonstrator helper and aggregation tests
+are included as well; use `ctest --test-dir build -N` to list the selected tests. The `release`
 preset adds the `_avx512` variants and, on a machine with AVX-512, a gated run of `scenario_bench`
 with its malformed-input checks.
 `BUILD_TESTING=OFF` omits tests; `LADDER_BUILD_EXAMPLES=OFF` omits examples.
@@ -99,8 +107,9 @@ QuantLib configurations do the same on any compiler when QuantLib is not install
 Explicit Debug builds can still be configured separately for diagnosis; they are not part
 of the shipped presets.
 
-The paper benchmarks retain their historical input-handling/benchmark assumptions, not the
-strict conformance contract of `bench_library`.
+The historical `bench_paper` target retains its earlier input-handling and comparison
+assumptions. The refactored `scenario_bench` and `adjoint_bench` have explicit numerical gates;
+this does not retroactively certify historical timing records.
 
 `scan_wave [data-and-output-directory]` optionally selects a separate replay directory;
 its no-argument CLion run uses build-directory copies. The CTest replay always selects

@@ -254,3 +254,18 @@ if(NOT LADDER_BUILD_QUANTLIB STREQUAL "OFF")
     message(STATUS "QuantLib not found: reference generators skipped; recorded replay remains available")
   endif()
 endif()
+
+
+# Readable demonstrator checks are small; no historical 500k timing is run here.
+if(BUILD_TESTING)
+  add_executable(test_demo_support tests/test_demo_support.cpp)
+  target_link_libraries(test_demo_support PRIVATE ladder)
+  add_test(NAME demo_support COMMAND test_demo_support)
+  if(TARGET aggregation)
+    add_test(NAME aggregation_demo_smoke COMMAND aggregation 2000)
+    add_test(NAME aggregation_demo_partial_book COMMAND aggregation 501)
+  endif()
+  if(TARGET adjoint_bench AND (NOT LADDER_DUAL_ISA OR LADDER_HOST_HAS_AVX512))
+    add_test(NAME adjoint_demo_smoke COMMAND adjoint_bench 257 1)
+  endif()
+endif()

@@ -1,46 +1,207 @@
-// Risk aggregation: contiguous ordered ladders vs per-instrument maps keyed by tenor label.
-#include <chrono>
+// Compare the same risk values stored in contiguous ladders and labelled maps.
+// Read run_experiment first. Timing is a helper; the operations being measured
+// have their own names and are below. The historical default is 100,000 trades.
+#include "../support/input.hpp"
+#include "../support/timing.hpp"
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <map>
-#include <unordered_map>
-#include <string>
-#include <vector>
 #include <random>
-#include <algorithm>
-static double now_ms(){ return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
-int main(){
-    const size_t N = 100000; const int K = 66;
-    std::vector<std::string> tenor(K); for (int k = 0; k < K; ++k) tenor[k] = (k < 30 ? "EONIA_" : "EUR6M_") + std::to_string(k) + "M";
-    std::mt19937_64 rng(1); std::uniform_real_distribution<double> u(-1e3, 1e3);
-    std::vector<double> flat(N * K); for (auto& x : flat) x = u(rng);                       // contiguous, stencil-major per instrument
-    std::vector<std::map<std::string,double>> maps(N); std::vector<std::unordered_map<std::string,double>> umaps(N);
-    for (size_t i = 0; i < N; ++i) for (int k = 0; k < K; ++k) { maps[i][tenor[k]] = flat[i*K+k]; umaps[i][tenor[k]] = flat[i*K+k]; }
-    // 1. contiguous: book ladder = sum over instruments
-    double best1 = 1e30; std::vector<double> book(K);
-    for (int r = 0; r < 5; ++r) { double t0 = now_ms(); std::fill(book.begin(), book.end(), 0.0);
-        for (size_t i = 0; i < N; ++i) { const double* p = &flat[i*K]; for (int k = 0; k < K; ++k) book[k] += p[k]; }
-        best1 = std::min(best1, now_ms() - t0); }
-    // 2. std::map per instrument, accumulate into a std::map
-    double best2 = 1e30; std::map<std::string,double> bookm;
-    for (int r = 0; r < 3; ++r) { double t0 = now_ms(); bookm.clear();
-        for (size_t i = 0; i < N; ++i) for (auto& kv : maps[i]) bookm[kv.first] += kv.second;
-        best2 = std::min(best2, now_ms() - t0); }
-    // 3. unordered_map per instrument, accumulate into an unordered_map
-    double best3 = 1e30; std::unordered_map<std::string,double> booku;
-    for (int r = 0; r < 3; ++r) { double t0 = now_ms(); booku.clear();
-        for (size_t i = 0; i < N; ++i) for (auto& kv : umaps[i]) booku[kv.first] += kv.second;
-        best3 = std::min(best3, now_ms() - t0); }
-    // 4. contiguous, hierarchical: 1000 books of 500 instruments, then desks of 10 books -> same pass, two levels
-    double best4 = 1e30; std::vector<double> books(200 * K), desks(20 * K);
-    for (int r = 0; r < 5; ++r) { double t0 = now_ms(); std::fill(books.begin(), books.end(), 0.0); std::fill(desks.begin(), desks.end(), 0.0);
-        for (size_t i = 0; i < N; ++i) { double* b = &books[(i / 500) * K]; const double* p = &flat[i*K]; for (int k = 0; k < K; ++k) b[k] += p[k]; }
-        for (int b = 0; b < 200; ++b) { double* d = &desks[(b / 10) * K]; for (int k = 0; k < K; ++k) d[k] += books[b*K+k]; }
-        best4 = std::min(best4, now_ms() - t0); }
-    double chk = 0; for (int k = 0; k < K; ++k) chk += book[k] - bookm[tenor[k]]; 
-    std::printf("100k instruments x 66 sensitivities, book-level aggregation (one core):\n");
-    std::printf("  contiguous ordered ladders, vector add        %8.2f ms   (%.2f ns/value)\n", best1, best1*1e6/(N*K));
-    std::printf("  contiguous, two-level hierarchy (book, desk)  %8.2f ms\n", best4);
-    std::printf("  std::unordered_map<tenor,double> per instrument %7.1f ms   (%.1f ns/value)  %.0fx slower\n", best3, best3*1e6/(N*K), best3/best1);
-    std::printf("  std::map<tenor,double> per instrument         %8.1f ms   (%.1f ns/value)  %.0fx slower\n", best2, best2*1e6/(N*K), best2/best1);
-    std::printf("  (check %.1e)  memory: flat %.0f MB vs maps ~%.0f MB\n", chk, N*K*8/1e6, N*K*(48.0+32+8)/1e6);
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace aggregation_demo {
+namespace {
+
+constexpr int wave_count = 66;
+constexpr std::size_t instruments_per_book = 500;
+constexpr std::size_t books_per_desk = 10;
+using OrderedLadder = std::map<std::string, double>;
+using HashedLadder = std::unordered_map<std::string, double>;
+
+struct Inputs {
+    std::vector<std::string> labels;
+    std::vector<double> flat;
+    std::vector<OrderedLadder> ordered;
+    std::vector<HashedLadder> hashed;
+};
+
+Inputs prepare_inputs(std::size_t count)
+{
+    Inputs input;
+    for (int wave = 0; wave < wave_count; ++wave) {
+        input.labels.push_back((wave < 30 ? "EONIA_" : "EUR6M_")
+                               + std::to_string(wave) + "M");
+    }
+    std::mt19937_64 random(1);
+    std::uniform_real_distribution<double> value(-1e3, 1e3);
+    input.flat.resize(count * wave_count);
+    std::generate(input.flat.begin(), input.flat.end(), [&] { return value(random); });
+    input.ordered.resize(count);
+    input.hashed.resize(count);
+    for (std::size_t instrument = 0; instrument < count; ++instrument) {
+        for (int wave = 0; wave < wave_count; ++wave) {
+            const double risk = input.flat[instrument * wave_count + wave];
+            input.ordered[instrument][input.labels[wave]] = risk;
+            input.hashed[instrument][input.labels[wave]] = risk;
+        }
+    }
+    return input;
+}
+
+void add_ladder(std::span<double> total, std::span<const double> contribution)
+{
+    const auto add = [](double accumulated, double value) { return accumulated + value; };
+    std::transform(total.begin(), total.end(), contribution.begin(), total.begin(), add);
+}
+
+void aggregate_contiguous(const std::vector<double>& input, std::vector<double>& total)
+{
+    std::fill(total.begin(), total.end(), 0.0);
+    for (std::size_t offset = 0; offset < input.size(); offset += wave_count) {
+        add_ladder(total, {input.data() + offset, wave_count});
+    }
+}
+
+template<class Map>
+void aggregate_maps(const std::vector<Map>& input, Map& total)
+{
+    // Clearing/rebuilding the output map remains inside the measured operation.
+    total.clear();
+    for (const auto& instrument : input) {
+        for (const auto& [tenor, value] : instrument) {
+            total[tenor] += value;
+        }
+    }
+}
+
+struct Hierarchy {
+    std::vector<double> books;
+    std::vector<double> desks;
+};
+
+Hierarchy make_hierarchy(std::size_t count)
+{
+    const auto books = (count + instruments_per_book - 1) / instruments_per_book;
+    const auto desks = (books + books_per_desk - 1) / books_per_desk;
+    return {std::vector<double>(books * wave_count), std::vector<double>(desks * wave_count)};
+}
+
+void aggregate_hierarchy(const std::vector<double>& input, Hierarchy& output)
+{
+    std::fill(output.books.begin(), output.books.end(), 0.0);
+    std::fill(output.desks.begin(), output.desks.end(), 0.0);
+    const auto count = input.size() / wave_count;
+    for (std::size_t instrument = 0; instrument < count; ++instrument) {
+        const auto book = instrument / instruments_per_book;
+        add_ladder({output.books.data() + book * wave_count, wave_count},
+                   {input.data() + instrument * wave_count, wave_count});
+    }
+    for (std::size_t book = 0; book < output.books.size() / wave_count; ++book) {
+        const auto desk = book / books_per_desk;
+        add_ladder({output.desks.data() + desk * wave_count, wave_count},
+                   {output.books.data() + book * wave_count, wave_count});
+    }
+}
+
+void check_results(const Inputs& input, const std::vector<double>& flat_total,
+                   const OrderedLadder& ordered_total, const HashedLadder& hashed_total,
+                   const Hierarchy& hierarchy)
+{
+    for (int wave = 0; wave < wave_count; ++wave) {
+        long double expected = 0.0L;
+        for (std::size_t offset = wave; offset < input.flat.size(); offset += wave_count) {
+            expected += static_cast<long double>(input.flat[offset]);
+        }
+        double desk_total = 0.0;
+        for (std::size_t offset = wave; offset < hierarchy.desks.size(); offset += wave_count) {
+            desk_total += hierarchy.desks[offset];
+        }
+        const auto agrees = [expected](double actual) {
+            return std::isfinite(actual)
+                && std::fabs(static_cast<long double>(actual) - expected)
+                    <= 2e-11L * std::max(1e4L, std::fabs(expected));
+        };
+        if (!agrees(flat_total[wave]) || !agrees(ordered_total.at(input.labels[wave]))
+            || !agrees(hashed_total.at(input.labels[wave])) || !agrees(desk_total)) {
+            throw std::runtime_error("aggregation comparison failed");
+        }
+    }
+}
+
+struct Measurements {
+    double flat;
+    double hierarchy;
+    double ordered;
+    double hashed;
+};
+
+void print_results(std::size_t count, const Measurements& measured)
+{
+    const double values = double(count) * wave_count;
+    std::printf("%zu instruments x 66 sensitivities, book-level aggregation (one core):
+", count);
+    std::printf("  contiguous ordered ladders, vector add        %8.2f ms   (%.2f ns/value)
+",
+                measured.flat, measured.flat * 1e6 / values);
+    std::printf("  contiguous, two-level hierarchy (book, desk)  %8.2f ms
+", measured.hierarchy);
+    std::printf("  std::unordered_map per instrument            %8.1f ms   %.0fx slower
+",
+                measured.hashed, measured.hashed / measured.flat);
+    std::printf("  std::map per instrument                      %8.1f ms   %.0fx slower
+",
+                measured.ordered, measured.ordered / measured.flat);
+    std::printf("  memory: flat %.0f MB vs maps ~%.0f MB (historical node-size estimate)
+",
+                values * 8 / 1e6, values * (48.0 + 32 + 8) / 1e6);
+    std::printf("correctness gate: PASS (all representations and desk totals checked)
+");
+}
+
+int run_experiment(std::size_t count)
+{
+    const auto input = prepare_inputs(count);
+    std::vector<double> total(wave_count);
+    OrderedLadder ordered_total;
+    HashedLadder hashed_total;
+    auto hierarchy = make_hierarchy(count);
+    Measurements measured;
+
+    measured.flat = demo::measure_best(5, [&] {
+        aggregate_contiguous(input.flat, total);
+    });
+    measured.ordered = demo::measure_best(3, [&] {
+        aggregate_maps(input.ordered, ordered_total);
+    });
+    measured.hashed = demo::measure_best(3, [&] {
+        aggregate_maps(input.hashed, hashed_total);
+    });
+    measured.hierarchy = demo::measure_best(5, [&] {
+        aggregate_hierarchy(input.flat, hierarchy);
+    });
+
+    check_results(input, total, ordered_total, hashed_total, hierarchy);
+    print_results(count, measured);
+    return 0;
+}
+
+} // namespace
+} // namespace aggregation_demo
+
+int main(int argc, char** argv)
+{
+    try {
+        constexpr auto usage = "usage: aggregation [instruments=1..1000000]";
+        if (argc > 2) throw std::invalid_argument(usage);
+        const auto count = argc > 1 ? demo::read_count(argv[1], 1, 1000000, usage) : 100000;
+        return aggregation_demo::run_experiment(count);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "aggregation: %s
+", error.what());
+        return 1;
+    }
 }
