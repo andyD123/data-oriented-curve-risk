@@ -142,24 +142,17 @@ struct Measurements {
 void print_results(std::size_t count, const Measurements& measured)
 {
     const double values = double(count) * wave_count;
-    std::printf("%zu instruments x 66 sensitivities, book-level aggregation (one core):
-", count);
-    std::printf("  contiguous ordered ladders, vector add        %8.2f ms   (%.2f ns/value)
-",
+    std::printf("%zu instruments x 66 sensitivities, book-level aggregation (one core):\n", count);
+    std::printf("  contiguous ordered ladders, vector add        %8.2f ms   (%.2f ns/value)\n",
                 measured.flat, measured.flat * 1e6 / values);
-    std::printf("  contiguous, two-level hierarchy (book, desk)  %8.2f ms
-", measured.hierarchy);
-    std::printf("  std::unordered_map per instrument            %8.1f ms   %.0fx slower
-",
+    std::printf("  contiguous, two-level hierarchy (book, desk)  %8.2f ms\n", measured.hierarchy);
+    std::printf("  std::unordered_map per instrument            %8.1f ms   %.0fx slower\n",
                 measured.hashed, measured.hashed / measured.flat);
-    std::printf("  std::map per instrument                      %8.1f ms   %.0fx slower
-",
+    std::printf("  std::map per instrument                      %8.1f ms   %.0fx slower\n",
                 measured.ordered, measured.ordered / measured.flat);
-    std::printf("  memory: flat %.0f MB vs maps ~%.0f MB (historical node-size estimate)
-",
+    std::printf("  memory: flat %.0f MB vs maps ~%.0f MB (historical node-size estimate)\n",
                 values * 8 / 1e6, values * (48.0 + 32 + 8) / 1e6);
-    std::printf("correctness gate: PASS (all representations and desk totals checked)
-");
+    std::printf("correctness gate: PASS (all representations and desk totals checked)\n");
 }
 
 int run_experiment(std::size_t count)
@@ -200,8 +193,7 @@ int main(int argc, char** argv)
         const auto count = argc > 1 ? demo::read_count(argv[1], 1, 1000000, usage) : 100000;
         return aggregation_demo::run_experiment(count);
     } catch (const std::exception& error) {
-        std::fprintf(stderr, "aggregation: %s
-", error.what());
+        std::fprintf(stderr, "aggregation: %s\n", error.what());
         return 1;
     }
 }
