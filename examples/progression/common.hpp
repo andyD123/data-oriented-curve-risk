@@ -3,6 +3,7 @@
 #include "ladder/layout.hpp"
 #include "ladder/scan.hpp"
 #include "ladder/scan_wide_experiment.hpp"
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -10,6 +11,17 @@
 namespace progression {
 
 constexpr double days_per_year = 365.0;
+using ScenarioRow = std::array<double, 4>;
+
+inline ScenarioRow scenario_discounts(double t)
+{
+    return {
+        std::exp(-0.030 * t),
+        std::exp(-0.035 * t),
+        std::exp(-0.040 * t),
+        std::exp(-0.045 * t)
+    };
+}
 
 inline double discount(double t)
 {
