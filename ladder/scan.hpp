@@ -20,14 +20,18 @@ inline void scan_discount(const Stencils& S, std::span<const UnitCashflow> cf, d
     // forward pass: interior term. A cashflow at or beyond B[K] belongs to the tail of every stencil up to K;
     // for stencil K it is either tail mass (capped last stencil) or interior with uncapped weight (open last stencil).
     double previous = -std::numeric_limits<double>::infinity();
+    int bucket = 1;
     for (const auto& c : cf) {
         if (!std::isfinite(c.t) || !std::isfinite(c.x) || c.t < previous)
             throw std::invalid_argument("scan_discount: finite, time-sorted records required");
         previous = c.t;
         if (c.t <= S.B.front()) continue; // no overlap before the first wave
-        int k = S.bucket(c.t);
-        if (c.t >= BK) { if (S.open_last) interior[K] += c.x * (c.t - S.B[K-1]); }
-        else interior[k] += c.x * (c.t - S.B[k-1]);
+        while (bucket < K && c.t >= S.B[bucket]) ++bucket;
+        if (c.t >= BK) {
+            if (S.open_last) interior[K] += c.x * (c.t - S.B[K-1]);
+        } else {
+            interior[bucket] += c.x * (c.t - S.B[bucket-1]);
+        }
     }
     double running = 0.0; int k = K;                                                                // backward pass
     for (auto it = cf.rbegin(); it != cf.rend(); ++it) {

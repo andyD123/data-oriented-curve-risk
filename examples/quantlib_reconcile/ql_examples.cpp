@@ -212,31 +212,83 @@ int main()
     std::printf("QuantLib %s bump-and-reprice reference: %zu instruments, %zu+%zu coordinates: %.1f ms\n", QL_VERSION, insts.size(), eoniaDfs.size()-1, eurDfs.size()-1, ms);
     for (auto& in : insts) { std::printf("  %-26s PV %14.4f |", in.name.c_str(), pv_all(in, **discH)); for (size_t l = 0; l < in.legs.size(); ++l) std::printf(" leg%zu sign %+.0f npv %.2f", l, in.sign[l], leg_npv(in.legs[l], **discH)); std::printf("\n"); }
 
-    // ================= market-quote risk: direct (bump quote, re-bootstrap, revalue book) vs scan-aggregate x Jacobian
+    // ================= market-quote risk: direct quote bump + rebootstrap and bootstrap Jacobian
     {
-        discH.linkTo(eoniaBoot); projH.linkTo(eurBoot);           // live bootstrapped curves respond to quote bumps
-        auto thetas = [&](const auto& boot) { std::vector<double> th; auto nd = boot->nodes(); for (size_t j = 1; j < nd.size(); ++j) th.push_back(-std::log(nd[j].second / nd[j-1].second)); return th; };
-        auto book_pv = [&]() { double s = 0; for (auto& in : insts) s += pv_all(in, **discH); return s; };
-        std::vector<ext::shared_ptr<SimpleQuote>> allQ = eoniaQ; allQ.insert(allQ.end(), eurQ.begin(), eurQ.end());
-        const int Ko = (int)eoniaDfs.size() - 1, Kp = (int)eurDfs.size() - 1, M = (int)allQ.size();
-        const double h = 1e-6;
-        std::vector<double> direct(M); std::vector<std::vector<double>> J(M, std::vector<double>(Ko + Kp));
-        auto t0 = std::chrono::steady_clock::now();
-        for (int m = 0; m < M; ++m) {
-            double q0 = allQ[m]->value();
-            allQ[m]->setValue(q0 + h); double pvu = book_pv(); auto tou = thetas(eoniaBoot), tpu = thetas(eurBoot);
-            allQ[m]->setValue(q0 - h); double pvd = book_pv(); auto tod = thetas(eoniaBoot), tpd = thetas(eurBoot);
-            allQ[m]->setValue(q0);
-            direct[m] = (pvu - pvd) / (2*h);
-            for (int k = 0; k < Ko; ++k) J[m][k] = (tou[k] - tod[k]) / (2*h);
-            for (int k = 0; k < Kp; ++k) J[m][Ko + k] = (tpu[k] - tpd[k]) / (2*h);
-        }
-        double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-        FILE* f = std::fopen("./quote_risk_direct.txt", "w");
-        for (int m = 0; m < M; ++m) { std::fprintf(f, "%s %d %.17g", m < (int)eoniaQ.size() ? "eonia" : "euribor", m, direct[m]); for (int k = 0; k < Ko + Kp; ++k) std::fprintf(f, " %.17g", J[m][k]); std::fprintf(f, "\n"); }
-        std::fclose(f);
-        int cross = 0; for (int m = 0; m < (int)eoniaQ.size(); ++m) for (int k = Ko; k < Ko + Kp; ++k) if (std::fabs(J[m][k]) > 1e-6) ++cross;
-        std::printf("quote risk by re-bootstrap: %d quotes, %.1f ms; Jacobian cross-block (Eonia quote -> Euribor forward) non-zeros: %d of %d\n", M, ms, cross, (int)eoniaQ.size() * Kp);
+        discH.linkTo(eoniaBoot);
+        projH.linkTo(eurBoot); // live bootstrapped curves respond to quote bumps
+
+        auto interval_forwards = [&](const auto& boot) {
+            std::vector<double> theta;
+            const auto nodes = boot->nodes();
+            theta.reserve(nodes.size() - 1);
+            for (size_t j = 1; j < nodes.size(); ++j)
+                theta.push_back(-std::log(nodes[j].second / nodes[j-1].second));
+            return theta;
+        };
+        auto book_pv = [&]() {
+            double total = 0.0;
+            for (auto& in : insts) total += pv_all(in, **discH);
+            return total;
+        };
+
+        std::vector<ext::shared_ptr<SimpleQuote>> allQ = eoniaQ;
+        allQ.insert(allQ.end(), eurQ.begin(), eurQ.end());
+        const int Ko = (int)eoniaDfs.size() - 1;
+        const int Kp = (int)eurDfs.size() - 1;
+        const int M = (int)allQ.size();
+
+        auto quote_reference = [&](double h, const char* file_name) {
+            std::vector<double> direct(M);
+            std::vector<std::vector<double>> jacobian(M, std::vector<double>(Ko + Kp));
+            const auto t0 = std::chrono::steady_clock::now();
+
+            for (int m = 0; m < M; ++m) {
+                const double q0 = allQ[m]->value();
+
+                allQ[m]->setValue(q0 + h);
+                const double pv_up = book_pv();
+                const auto ois_up = interval_forwards(eoniaBoot);
+                const auto proj_up = interval_forwards(eurBoot);
+
+                allQ[m]->setValue(q0 - h);
+                const double pv_down = book_pv();
+                const auto ois_down = interval_forwards(eoniaBoot);
+                const auto proj_down = interval_forwards(eurBoot);
+
+                allQ[m]->setValue(q0);
+                direct[m] = (pv_up - pv_down) / (2 * h);
+                for (int k = 0; k < Ko; ++k)
+                    jacobian[m][k] = (ois_up[k] - ois_down[k]) / (2 * h);
+                for (int k = 0; k < Kp; ++k)
+                    jacobian[m][Ko + k] = (proj_up[k] - proj_down[k]) / (2 * h);
+            }
+
+            FILE* file = std::fopen(file_name, "w");
+            if (!file) throw std::runtime_error(std::string("cannot write ") + file_name);
+            for (int m = 0; m < M; ++m) {
+                std::fprintf(file, "%s %d %.17g",
+                    m < (int)eoniaQ.size() ? "eonia" : "euribor", m, direct[m]);
+                for (double value : jacobian[m]) std::fprintf(file, " %.17g", value);
+                std::fprintf(file, "\n");
+            }
+            std::fclose(file);
+
+            const double milliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t0).count();
+            int cross = 0;
+            for (int m = 0; m < (int)eoniaQ.size(); ++m)
+                for (int k = Ko; k < Ko + Kp; ++k)
+                    if (std::fabs(jacobian[m][k]) > 1e-6) ++cross;
+            std::printf(
+                "quote risk reference h=%.1e: %d quotes, %.1f ms; "
+                "Eonia->Euribor Jacobian non-zeros: %d of %d\n",
+                h, M, milliseconds, cross, (int)eoniaQ.size() * Kp);
+        };
+
+        // Two central-difference steps allow the checker to Richardson-extrapolate
+        // both the direct quote risk and the bootstrap Jacobian.
+        quote_reference(1e-6, "./quote_risk_1e-06.txt");
+        quote_reference(5e-7, "./quote_risk_5e-07.txt");
     }
     return 0;
 }

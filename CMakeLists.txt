@@ -251,6 +251,16 @@ if(NOT LADDER_BUILD_QUANTLIB STREQUAL "OFF")
       target_link_libraries(${_target} PRIVATE ${_quantlib})
     endforeach()
     ladder_example(scan_reconcile quantlib_reconcile scan_reconcile.cpp)
+    if(BUILD_TESTING)
+      find_package(Python3 COMPONENTS Interpreter QUIET)
+      if(Python3_Interpreter_FOUND)
+        add_test(NAME quantlib_quote_risk_reconciliation
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/quantlib_reconcile/quote_risk_check.py"
+            --directory "${CMAKE_BINARY_DIR}/examples/quantlib_reconcile"
+            --generate "$<TARGET_FILE:ql_examples>" "$<TARGET_FILE:scan_reconcile>")
+      endif()
+    endif()
     message(STATUS "QuantLib found: reference generators enabled")
   elseif(LADDER_BUILD_QUANTLIB STREQUAL "ON")
     message(FATAL_ERROR "QuantLib C++ headers/library not found. Install QuantLib or use AUTO/OFF.")
@@ -265,6 +275,13 @@ if(BUILD_TESTING)
   add_executable(test_demo_support tests/test_demo_support.cpp)
   target_link_libraries(test_demo_support PRIVATE ladder)
   add_test(NAME demo_support COMMAND test_demo_support)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME quote_risk_checker_synthetic
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quote_risk_check.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/quantlib_reconcile/quote_risk_check.py")
+  endif()
   if(TARGET aggregation)
     add_test(NAME aggregation_demo_smoke COMMAND aggregation 2000)
     add_test(NAME aggregation_demo_partial_book COMMAND aggregation 501)
