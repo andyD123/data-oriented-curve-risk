@@ -120,6 +120,13 @@ if(LADDER_LANES STREQUAL "STDX")
 endif()
 
 if(BUILD_TESTING)
+  # Separate optional second-order calculation: never changes first-order SIMD kernels.
+  add_executable(test_cross_gamma tests/test_cross_gamma.cpp)
+  target_link_libraries(test_cross_gamma PRIVATE ladder)
+  add_test(NAME cross_gamma COMMAND test_cross_gamma)
+  add_executable(test_cross_gamma_quantlib_archive tests/test_cross_gamma_quantlib_archive.cpp)
+  target_link_libraries(test_cross_gamma_quantlib_archive PRIVATE ladder)
+  add_test(NAME cross_gamma_quantlib_archive COMMAND test_cross_gamma_quantlib_archive)
   if(LADDER_DUAL_ISA)
     foreach(_lc avx2 avx512)
       foreach(_t ladder boundaries)
