@@ -27,7 +27,7 @@ and inspect their outputs; a discarded pure return value is not a useful benchma
    The two paths supply different column-lookup lambdas, not different pricing code.
 3. [`scenario_book.hpp`](benchmark_paper/scenario_book.hpp) constructs the synthetic
    schedules and the three processing orders. It preserves this example's original
-   random draw order and day rounding; these are not QuantLib-generated calendars.
+   random draw order and day rounding; these are synthetic calendars.
 4. [`scenario_cache.hpp`](benchmark_paper/scenario_cache.hpp) contains only the LRU
    bookkeeping. Pricing sees `fetch(date, fill_column)`.
 5. [`scenario_report.hpp`](benchmark_paper/scenario_report.hpp) contains the console
@@ -68,7 +68,7 @@ remains inside the timed operations.
 ## What this pass does not change
 
 `ladder/`, recorded `.txt` and `.svg` evidence, `bench_paper.cpp`, the seasoned library
-benchmark and the QuantLib harnesses are unchanged. Their further presentation work
+benchmark and the reference harnesses are unchanged. Their further presentation work
 is not claimed complete. The historical headline executable still has its own
 integrated-forward units; this readability edit does not resolve that separate issue.
 

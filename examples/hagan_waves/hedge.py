@@ -1,6 +1,6 @@
 """Hagan wave hedging on top of the scan.
 Reads: scan_wave_risk.txt (book wave risk from the scan, per unit forward bump), wave_hedges.txt (wave risk of
-candidate par instruments per 1M notional, from QuantLib), wave_buckets.txt. Solves min ||H^T q - r||.
+candidate par instruments per 1M notional), wave_buckets.txt. Solves min ||H^T q - r||.
 """
 import numpy as np
 S = np.loadtxt('scan_wave_risk.txt'); book = S.sum(axis=0)

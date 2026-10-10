@@ -8,6 +8,7 @@
 #include "../ladder/unit_cashflow.hpp"
 #include "../ladder/scan.hpp"
 #include "../ladder/replicate.hpp"
+#include "../ladder/curve.hpp"
 #include "../ladder/layout.hpp"
 #include "../ladder/scan_simd.hpp"
 using namespace ladder;
@@ -15,17 +16,10 @@ using namespace ladder;
 static int fails = 0;
 #define CHECK(cond, ...) do { if (!(cond)) { ++fails; std::printf("FAIL %s:%d  ", __FILE__, __LINE__); std::printf(__VA_ARGS__); std::printf("\n"); } } while (0)
 
-// synthetic log-linear curves on arbitrary stencil boundaries (admissible by construction)
-struct Curve {
-    Stencils S; std::vector<double> logD;
-    double df(double t) const { int k = S.bucket(t); double a = (t - S.B[k-1]) / S.len(k); return std::exp(logD[k-1] + a * (logD[k] - logD[k-1])); }
-    // box bump of stencil k by delta: forward +delta on [B[k-1], B[k])
-    double df_bumped(double t, int k, double delta) const { return df(t) * std::exp(-delta * S.overlap(k, t)); }
-};
 static Curve make_curve(std::vector<double> B, double r0, double slope) {
-    Curve c; c.S.B = B; c.logD.resize(B.size());
-    for (size_t i = 0; i < B.size(); ++i) c.logD[i] = -(r0 + slope * B[i]) * B[i];
-    return c;
+    std::vector<double> z(B.size());
+    for (size_t i = 0; i < B.size(); ++i) z[i] = r0 + slope * B[i];
+    return Curve::from_zero_rates(B, z);
 }
 
 int main()
@@ -70,7 +64,7 @@ int main()
         double scale = 1e-300; for (double v : sd) scale = std::max(scale, std::fabs(v));
         // adjoint: PV(delta) = sum x_j exp(-delta_k ov_kj) -> dPV/ddelta_k = -sum x_j ov_kj
         for (int k = 1; k <= Kd; ++k) { double a = 0; for (auto& c : ucf[i]) a -= c.x * cd.S.overlap(k, c.t); worst_adj = std::max(worst_adj, std::fabs(a - sd[k-1]) / scale); }
-        // finite difference through df_bumped on the replicated unit cashflows (re-replicating is the QuantLib job; here the curve bump is exact)
+        // finite difference through df_bumped on the replicated unit cashflows (here the curve bump is exact)
         auto pv = [&](int k, double d){ double s = 0; for (auto& c : book[i].fixed) s += c.amount * cd.df_bumped(c.day / DPY, k, d);
             for (auto& f : book[i].flt) s += f.scale * (pf(f.a_day / DPY) / pf(f.b_day / DPY) - 1.0) * cd.df_bumped(f.pay_day / DPY, k, d);
             for (auto& o : book[i].ois) s += o.N * (cd.df_bumped(o.a_day / DPY, k, d) / cd.df_bumped(o.b_day / DPY, k, d) - 1.0) * cd.df_bumped(o.pay_day / DPY, k, d); return s; };
@@ -110,8 +104,26 @@ int main()
     }
     CHECK(worst_g < 1e-9, "grouped vs scalar: %.2e", worst_g);
     CHECK(worst_s == 0.0, "streaming vs normal store differ: %.2e", worst_s);
+
+    // Verify in-register L1 cache reduction
+    std::vector<double> reduced(Kd + Kp, 0.0);
+    scan_grouped_reduce(L, cd.S, cp.S, reduced.data());
+    std::vector<double> expected_ladder(Kd + Kp, 0.0);
+    for (size_t i = 0; i < N; ++i) {
+        scan_discount(cd.S, ucf[i], sd.data());
+        scan_projection(cp.S, pterms[i], sp.data());
+        for (int k = 0; k < Kd; ++k) expected_ladder[k] += sd[k];
+        for (int k = 0; k < Kp; ++k) expected_ladder[Kd + k] += sp[k];
+    }
+    double worst_red = 0.0;
+    for (int k = 0; k < Kd + Kp; ++k) {
+        double scale = std::max(1.0, std::fabs(expected_ladder[k]));
+        worst_red = std::max(worst_red, std::fabs(reduced[k] - expected_ladder[k]) / scale);
+    }
+    CHECK(worst_red < 1e-12, "in-register reduction vs scalar sum: %.2e", worst_red);
+
     { size_t slots = L.groups.size() * LANES, live = 0; for (auto& g : L.groups) live += g.n_valid; std::printf("groups %zu, lane occupancy %.1f%% (mixed seasoning per group)\n", L.groups.size(), 100.0 * live / slots); }
-    std::printf("grouped vs scalar max rel %.1e (summation order; FMA contraction); streaming == normal: %s\n", worst_g, worst_s == 0.0 ? "yes" : "NO");
+    std::printf("grouped vs scalar max rel %.1e (summation order; FMA contraction); streaming == normal: %s; in-register reduce: %.1e\n", worst_g, worst_s == 0.0 ? "yes" : "NO", worst_red);
     ladder::free_aligned(on); ladder::free_aligned(os);
 
     // ---- 4. cashflows beyond the last boundary: capped and open last stencil, scalar vs grouped vs direct overlap adjoint
@@ -175,6 +187,40 @@ int main()
           Stencils Sp_c = cp.S; scan_projection(Sp_c, one, g.data());
           CHECK(g[Kp-1] == 0.0, "projection beyond capped last wave should be zero: %.3e", g[Kp-1]); }
         std::printf("structural identities: boundary %.1e, parallel %.1e, merge %.1e; projection beyond last wave handled\n", w, w2, w3);
+    }
+
+    // ---- 6. simple zero curves and curve construction
+    {
+        std::vector<double> B = {0.0, 1.0, 2.0, 5.0, 10.0};
+        std::vector<double> z = {0.02, 0.025, 0.030, 0.035, 0.040};
+        Curve cz = Curve::from_zero_rates(B, z);
+        CHECK(cz.df(0.0) == 1.0, "df(0) == 1.0");
+        for (size_t i = 1; i < B.size(); ++i) {
+            double expected_df = std::exp(-z[i] * B[i]);
+            CHECK(std::fabs(cz.df(B[i]) - expected_df) < 1e-15, "zero curve df at pillar %zu", i);
+            CHECK(std::fabs(cz.zero_rate(B[i]) - z[i]) < 1e-15, "zero curve zero_rate at pillar %zu", i);
+        }
+
+        // flat curve
+        Curve cflat = Curve::flat(B, 0.03);
+        for (double t : {0.5, 1.5, 3.0, 7.5}) {
+            CHECK(std::fabs(cflat.df(t) - std::exp(-0.03 * t)) < 1e-15, "flat curve df at %.1f", t);
+            CHECK(std::fabs(cflat.zero_rate(t) - 0.03) < 1e-14, "flat curve zero_rate at %.1f", t);
+        }
+
+        // forward rate
+        double fwd = cflat.forward_rate(1.0, 2.0);
+        double exp_fwd = (std::exp(-0.03 * 1.0) / std::exp(-0.03 * 2.0) - 1.0) / 1.0;
+        CHECK(std::fabs(fwd - exp_fwd) < 1e-15, "forward rate consistency");
+
+        // box bump exactness: zero leakage to the left, single multiplicative factor to the right
+        int bump_k = 2; // interval [1.0, 2.0)
+        double delta = 0.0010;
+        CHECK(cz.df_bumped(0.8, bump_k, delta) == cz.df(0.8), "no leakage left of stencil");
+        double right_factor = std::exp(-delta * (B[bump_k] - B[bump_k-1]));
+        CHECK(std::fabs(cz.df_bumped(5.0, bump_k, delta) / cz.df(5.0) - right_factor) < 1e-15, "exact right tail shift");
+
+        std::printf("simple zero curve construction: verified (nodes, flat, forward rate, exact no-leakage)\n");
     }
 
     std::printf(fails ? "FAILED (%d)\n" : "all tests passed\n", fails);

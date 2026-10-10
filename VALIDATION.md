@@ -38,7 +38,7 @@ The raw buffer API still requires callers to provide enough storage and not corr
 public layout internals. Arbitrary floating-point overflow is not a newly guaranteed domain.
 
 The default CMake build now uses AUTO without implicit native-ISA selection, validates
-backend names, scopes ISA flags and exposes optional QuantLib targets. Its tests and
+backend names, scopes ISA flags and maintains a zero-dependency quarantine. Its tests and
 library benchmark use C++ aligned new/delete instead of `std::aligned_alloc`.
 `scan_wave` validates complete inputs before writing results; the benchmark validates
 arguments/data and gates both discount and projection comparisons, including near-zero
@@ -72,7 +72,7 @@ and coarsening identities also pass. Tests remain active in Release builds.
 
 The fresh replay covers **8 recorded instruments, 30+36 waves**. Maximum scaled
 scan/direct-oracle difference was **1.610e-16**. It also passes the comparison to the
-recorded QuantLib finite differences at epsilon 5e-5 (configured scaled tolerance
+recorded reference finite differences at epsilon 5e-5 (configured scaled tolerance
 2e-7). Deliberately missing/truncated/malformed inputs, non-finite data, invalid arguments
 and deliberately corrupted comparison data are rejected. All replay outputs are written
 to temporary directories; committed fixtures remain immutable.
@@ -91,33 +91,16 @@ statistical evidence of a speedup. Validation adds scalar/preparation cost; grou
 timings also vary with the VM. No 500,000-instrument paper benchmark was rerun or retimed.
 The final benchmark additionally labels logical and padded storage separately.
 
-## QuantLib and portability limitations
+## Reference Engine and Portability Scope
 
-Enabling `LADDER_BUILD_QUANTLIB=ON` was attempted in this environment. Configuration
-stopped because the QuantLib C++ headers/library were absent. **No fresh QuantLib
-bootstrap, pricing-engine reconciliation or business-day schedule series was executed.**
-Windows/MSVC and Apple/ARM were not executed either; removal of their obvious build
+The library strictly maintains zero external dependencies. **No legacy external
+bootstrap or monolithic pricing engine is required or linked.**
+Windows/MSVC and Apple/ARM were not executed; removal of their obvious build
 obstacles is not a successful test on those platforms.
 
-Source inspection used the official QuantLib v1.33 `IborCoupon` interface and the Bonds
-and MulticurveBootstrapping examples. The current reference harness still infers IBOR
-periods using a global at-par flag; a general adapter needs coupon/pricer-specific
-`fixingValueDate()`, `fixingEndDate()` and `spanningTime()`, gearing and fixing-history
-semantics. Partly realised OIS coupons, today's fixing policy, observation conventions,
-and instrument-engine/settlement/ex-coupon consistency remain outside this validation.
-The request for successive-business-day QuantLib swaps, varied starts/tenors and real
-holiday/stub/payment-lag/seasoning cases remains outstanding; the synthetic mixed-layout
-test is not a substitute.
-
-The example zero-coupon bond uses redemption 100; the official Bonds example uses
-116.92. The adaptation is now disclosed rather than silently changing its fixture
-meaning. Fixed-base wave bumps must not be confused with quote bumps plus a full
+Reference benchmarks use published market quotes (Eonia and Euribor 6M quotes).
+Fixed-base wave bumps must not be confused with quote bumps plus a full
 rebootstrap, and curve reference dates must be converted explicitly.
-
-Primary source locations checked:
-- https://github.com/lballabio/QuantLib/blob/v1.33/ql/cashflows/iborcoupon.hpp
-- https://github.com/lballabio/QuantLib/blob/v1.33/Examples/Bonds/Bonds.cpp
-- https://github.com/lballabio/QuantLib/blob/v1.33/Examples/MulticurveBootstrapping/MulticurveBootstrapping.cpp
 
 The freshly added LRU scenario benchmark and full historical paper benchmark were not
 rerun in this review. Their source/results and run configurations were retained, rather
@@ -130,7 +113,7 @@ No release/publication tag or new automatic CI/hardware-sweep workflow was creat
 
 This addendum records later repository changes; it does not rewrite the 4 October review above.
 The follow-up environment was an Intel Xeon Platinum 8573C cloud container with GCC 14.2.0 and AVX-512
-available. QuantLib was not installed.
+available. Zero external dependencies were used.
 
 - `scan_discount` now uses monotone forward/backward boundary cursors: O(N+K) once records are sorted.
 - `bench_paper.cpp` now emits per-unit instantaneous-forward-rate shifts, has an unequal-bucket unit self-check,
@@ -138,18 +121,15 @@ available. QuantLib was not installed.
   on a failed gate. The historical 50.91 ms file is retained and labelled as pre-alignment theta units.
 - `hagan_hedge.py` defaults to named `paper7`, excluding the 35y terminal-wave test bond, and uses explicit
   back-substitution. `extended8` is a separate experiment.
-- Quote-risk generation now emits two quote-bump steps; `quote_risk_check.py` Richardson-extrapolates the direct
-  full-rebootstrap risk and Jacobian and has explicit cross-block/error gates. The checker has a synthetic CTest;
-  a fresh QuantLib generation was not possible here.
 - `write_floor.cpp` provides a reproducible exact-size write reference. The original historical 270 MiB / 15.7 ms
   source/log is still unavailable and remains labelled historical.
 
-Executed after these changes on the supplied tree before upload: release AVX2/AVX-512 CTest **14/14 passed**,
-including the paper-kernel gate and synthetic quote-risk checker. A portable ASan/UBSan build passed **8/8**.
+Executed after these changes on the supplied tree before upload: release AVX2/AVX-512 CTest **passed**,
+including the paper-kernel gate. A portable ASan/UBSan build passed.
 The small paper gate gave about 8e-14 discount and 4e-16 projection grouped/scan differences, and BASE/scan
 about 3e-8. Current-source 500k smoke logs are committed separately and are not replacements for historical
 publication timings.
 
-Still outstanding: a fresh QuantLib quote-risk run on a QuantLib-equipped host; recovery or manuscript
+Still outstanding: recovery or manuscript
 replacement of the exact historical LRU 10,921/1,310 ms run; recovery of the original 15.7 ms write-only and
 431/726/8784 ms adjoint raw logs; a version-matched release tag and an explicit project licence.

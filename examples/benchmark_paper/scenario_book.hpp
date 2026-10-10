@@ -1,6 +1,6 @@
 #pragma once
 
-// Synthetic schedules for the scenario-cache experiment, NOT QuantLib calendars.
+// Synthetic schedules for the scenario-cache experiment; pure primitive dates without OO calendar bloat.
 // Keep the original draw order and day rounding: changing either changes the book.
 #include <algorithm>
 #include <array>

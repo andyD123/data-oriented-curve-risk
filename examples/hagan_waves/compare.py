@@ -1,4 +1,4 @@
-"""Scan vs QuantLib box-wave bumps on the shipped cubic curves. Residual must fall ~4x when eps halves."""
+"""Scan vs reference box-wave bumps on the shipped cubic curves. Residual must fall ~4x when eps halves."""
 import numpy as np
 S = np.loadtxt('scan_wave_risk.txt'); R4 = np.loadtxt('wave_risk_0.0001.txt'); R2 = np.loadtxt('wave_risk_5e-05.txt')
 names = [l.split()[0] for l in open('unit_cashflows_wave.txt').readlines()[1:] if l[0].isalpha()]

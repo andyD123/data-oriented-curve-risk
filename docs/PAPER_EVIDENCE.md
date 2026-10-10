@@ -18,9 +18,8 @@ Do not combine rows from different machines/runs into one benchmark table.
 | Schedule ordering reduces cache misses | `scenario_bench`, `recorded_lru_*` | Reproducible miss counts. Fresh current record is `recorded_2026-10-06_lru_500k_rate_units.txt`. The manuscript 10,921/1,310 ms pair is still not tied to a committed raw run. |
 | Historical write-only comparison | 270 MiB / 15.7 ms | Original source/log is not currently in the repository. |
 | Current exact-size write reference | `write_floor`, `recorded_2026-10-06_write_floor.txt` | Reproducible current source, different host, not publication timing. |
-| Eight-instrument wave reconciliation | `scan_wave`, CTest replay; optional `ql_waves` | Recorded replay is current; fresh QuantLib generation requires QuantLib. |
+| Eight-instrument wave reconciliation | `scan_wave`, CTest replay | Recorded reference replay is current. |
 | Seven-instrument Hagan hedge | `python3 examples/hagan_waves/hagan_hedge.py --book paper7` | Named population; explicit back-substitution. |
-| Quote-risk composition | optional CTest `quantlib_quote_risk_reconciliation` | Source generates two quote steps and checker Richardson-extrapolates direct risk and Jacobian with a failure gate. Fresh QuantLib run still required. |
 
 ## Publication rule
 

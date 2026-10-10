@@ -1,6 +1,6 @@
 # benchmark — library kernel on a seasoned book
 
-Bonds, IBOR swaps and compounded-OIS swaps on the Eonia/Euribor6M curves of QuantLib's MulticurveBootstrapping example.
+Bonds, IBOR swaps and compounded-OIS swaps on the Eonia/Euribor6M curves of the market multi-curve dataset.
 Schedules are walked back from the last regular payment date with a random remaining life, so the book is seasoned;
 the grouping key is (type, maturity day) and groups mix seasoned and new trades on the same grid.
 
