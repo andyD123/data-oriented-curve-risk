@@ -174,6 +174,17 @@ if(LADDER_BUILD_EXAMPLES)
   endif()
   ladder_example(aggregation aggregation agg.cpp)
   ladder_example(scan_wave hagan_waves scan_wave.cpp)
+  ladder_example(cross_gamma_example cross_gamma cross_gamma_example.cpp)
+  if(BUILD_TESTING)
+    add_test(NAME cross_gamma_example_smoke COMMAND cross_gamma_example)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+      add_test(NAME cross_gamma_quantlib_offline
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/examples/cross_gamma/quantlib/live_ois_cross_gamma.py"
+          --scenario offline)
+    endif()
+  endif()
   if(LADDER_BUILD_WIDE_GROUP_EXPERIMENT)
     ladder_example(wide_group_bench benchmark wide_group_bench.cpp)
   endif()
