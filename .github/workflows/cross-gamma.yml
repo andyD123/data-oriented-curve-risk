@@ -5,6 +5,7 @@ on:
       - 'ladder/cross_gamma.hpp'
       - 'tests/test_cross_gamma.cpp'
       - 'tests/test_cross_gamma_quantlib_archive.cpp'
+      - 'examples/cross_gamma/**'
       - 'CMakeLists.txt'
       - '.github/workflows/cross-gamma.yml'
   workflow_dispatch:
@@ -13,9 +14,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Configure portable library without heavy examples
-        run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=OFF
-      - name: Build fast mathematical and archived QuantLib regressions
-        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive --parallel 2
-      - name: Run focused tests
+      - name: Configure portable cross-gamma and reader example
+        run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF
+      - name: Build targeted gamma and example executables
+        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive cross_gamma_example --parallel 2
+      - name: Check fixed, QuantLib-archive, worked-example and offline algebra
         run: ctest --test-dir build-cross-gamma --output-on-failure -R '^cross_gamma'
