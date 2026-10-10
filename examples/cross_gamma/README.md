@@ -195,6 +195,12 @@ historical fixings, lockouts, observation shifts, cross-curve IBOR products,
 optionality or quote-rebootstrap Hessians are all covered by the simple OIS
 formula.
 
+**Output contract:** The example forms one portfolio-level Hessian and verifies
+all 256 entries. That is not the same memory workload as writing a separate
+16x16 matrix for each of 500,000 trades. The reduced form allows lazy
+queries or matrix-free products without dense output when the caller wants
+those operations.
+
 **No new performance claim** is inferred from the explanatory example.
 For the separately measured fixed-cashflow research benchmark, see
 [the performance evidence note](../../docs/CROSS_GAMMA_BENCHMARK_2026-10-10.md).
