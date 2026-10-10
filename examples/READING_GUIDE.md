@@ -1,5 +1,21 @@
 # Reading the demonstrators
 
+## Start here for second-order curve risk
+
+[**The 16-bucket cross-gamma example**](cross_gamma/README.md) is the
+simplest entry point for the new Hessian work. It presents ten fixed cashflows,
+two OIS coupons (with and without payment lag), the first-order ladder, a
+separate second-moment diagonal pass, off-diagonal reconstruction and
+matrix-free Hessian-vector products. Its +50 bp two-wave scenario makes
+cross-gamma a visible **monetary** risk, rather than just a derivative matrix.
+
+Readers wanting an independent financial-library check can proceed to the
+[**QuantLib reconciliation project**](cross_gamma/quantlib/README.md):
+the recorded five-year lagged-OIS first-order wave fixture is executable
+without QuantLib, while the separate optional Python runner constructs a
+real QuantLib overnight coupon for a fresh second-order check. The optional
+live test is prepared but has not yet been run by us.
+
 Start with `run_experiment` in each `.cpp`. It shows the calculation being compared;
 clock reads, repetition and minimum-time selection live in
 [`support/timing.hpp`](support/timing.hpp).
