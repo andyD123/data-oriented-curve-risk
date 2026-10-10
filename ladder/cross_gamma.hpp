@@ -15,10 +15,8 @@
 namespace ladder {
 
 inline void validate_cross_gamma_stencils(const Stencils& S) {
-    if (S.B.size() < 2) throw std::invalid_argument("cross-gamma: empty stencil");
-    for (size_t i = 0; i < S.B.size(); ++i)
-        if (!std::isfinite(S.B[i]) || (i && !(S.B[i] > S.B[i - 1])))
-            throw std::invalid_argument("cross-gamma: invalid stencil boundaries");
+    // Same strict geometry contract as the production first-order scan.
+    S.validate();
 }
 
 // Input records must be finite and in ascending time order. O(N + K) after sort.
@@ -155,21 +153,24 @@ inline void add_ois_lag_gamma_product(const Stencils& S,
     const int K = S.K();
     if (v.size() != static_cast<size_t>(K) || out.size() != static_cast<size_t>(K))
         throw std::invalid_argument("add_ois_lag_gamma_product: wrong size");
+    // Delay writes until all coupon products have read v. Works in-place and
+    // for partially overlapping input/output buffers.
+    std::vector<double> correction(static_cast<size_t>(K), 0.0);
+    std::vector<double> r(static_cast<size_t>(K)), t(static_cast<size_t>(K));
     for (const auto& c : coupons) {
         validate_ois_lag_term(c);
-        double rv = 0.0, sv = 0.0;
+        double rv = 0.0, tv = 0.0;
         for (int k = 0; k < K; ++k) {
-            const double r = S.overlap(k + 1, c.b) - S.overlap(k + 1, c.a);
-            const double s = S.overlap(k + 1, c.p) - S.overlap(k + 1, c.b);
-            rv += r * v[k];
-            sv += s * v[k];
+            r[k] = S.overlap(k + 1, c.b) - S.overlap(k + 1, c.a);
+            t[k] = S.overlap(k + 1, c.p) - S.overlap(k + 1, c.b);
+            rv += r[k] * v[k];
+            tv += t[k] * v[k];
         }
-        for (int k = 0; k < K; ++k) {
-            const double r = S.overlap(k + 1, c.b) - S.overlap(k + 1, c.a);
-            const double s = S.overlap(k + 1, c.p) - S.overlap(k + 1, c.b);
-            out[k] -= c.A * (r * sv + s * rv);
-        }
+        for (int k = 0; k < K; ++k)
+            correction[k] -= c.A * (r[k] * tv + t[k] * rv);
     }
+    for (int k = 0; k < K; ++k)
+        out[k] += correction[k];
 }
 
 } // namespace ladder
