@@ -13,8 +13,19 @@ Readers wanting an independent financial-library check can proceed to the
 [**QuantLib reconciliation project**](cross_gamma/quantlib/README.md):
 the recorded five-year lagged-OIS first-order wave fixture is executable
 without QuantLib, while the separate optional Python runner constructs a
-real QuantLib overnight coupon for a fresh second-order check. The optional
-live test is prepared but has not yet been run by us.
+real QuantLib overnight coupon for a second-order check. The standard,
+stressed and interior-bucket tests are exercised in the focused CI workflow.
+
+## Portfolio-only reduction and independent RFR replay
+
+- [Portfolio reduction](../ladder/scan_grouped_reduce.hpp) directly accumulates
+  the existing eight-lane discount and projection ladders. The
+  [opt-in benchmark](benchmark/bench_grouped_reduce.cpp) compares direct
+  portfolio risk to writing and then aggregating every instrument's risk.
+- [RFR reconciliation](rfr_reconcile/README.md) generates a complete illustrative
+  overnight-indexed curve and instrument book with no QuantLib dependency.
+  The CTest checks both the retained reference fixtures and a fresh generated
+  book, including quote-risk Jacobian and the negative spline control.
 
 Start with `run_experiment` in each `.cpp`. It shows the calculation being compared;
 clock reads, repetition and minimum-time selection live in

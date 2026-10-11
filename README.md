@@ -17,6 +17,22 @@ and its [optional QuantLib reconciliation](examples/cross_gamma/quantlib/README.
 `measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
 This is a readability pass on those three examples, not a rewrite of the scan library.
 
+## Portfolio-only risk and independent RFR reconciliation
+
+For portfolio totals rather than trade-level ladders,
+[scan_grouped_reduce.hpp](ladder/scan_grouped_reduce.hpp) performs the
+existing discount+projection eight-lane calculation but aggregates each wave
+inside the kernel. It emits only Kd+Kp doubles without materialising the
+N-instrument risk matrix. The standard scan is unchanged. The separate
+[opt-in benchmark](examples/benchmark/bench_grouped_reduce.cpp) measures both
+methods on the **same** seeded mixed book; no universal speedup is assumed.
+
+The [single-curve RFR reconciliation](examples/rfr_reconcile/README.md) is a
+dependency-free companion exercise: illustrative par OIS quotes, log-linear
+discount bootstrap, wave sensitivities, quote Jacobian, hedge solve and a
+cubic-spline negative control. It augments rather than replaces the existing
+Hagan/QuantLib examples.
+
 ## Wide schedule-group experiment
 
 An opt-in example tests whether instruments sharing one schedule should be grouped independently
