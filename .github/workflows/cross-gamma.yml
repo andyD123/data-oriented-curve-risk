@@ -20,3 +20,24 @@ jobs:
         run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive cross_gamma_example --parallel 2
       - name: Check fixed, QuantLib-archive, worked-example and offline algebra
         run: ctest --test-dir build-cross-gamma --output-on-failure -R '^cross_gamma'
+  full-repository:
+    name: Full existing suite (${{ matrix.backend }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [PORTABLE, AVX2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure full repository (skip optional QuantLib/paper benchmarks)
+        run: >
+          cmake -S . -B build-full -DCMAKE_BUILD_TYPE=Release
+          -DLADDER_LANES=${{ matrix.backend }}
+          -DLADDER_BUILD_EXAMPLES=ON
+          -DLADDER_BUILD_QUANTLIB=OFF
+          -DLADDER_BUILD_PAPER_BENCHMARKS=OFF
+          -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=OFF
+      - name: Build every standard test and example
+        run: cmake --build build-full --parallel 2
+      - name: Run complete CTest suite, including existing risk regressions
+        run: ctest --test-dir build-full --output-on-failure --parallel 2
