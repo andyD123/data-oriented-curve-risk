@@ -42,7 +42,7 @@ taped second-order AAD prototype (one aggregated
 - Benchmark figures are single-threaded; see [BENCHMARKS.md](BENCHMARKS.md).
 - The reference reconciliation covers single-curve instruments; the projection pass is checked separately on term-rate swaps (`rfr_projection_check.py`, wave ladders only). The cross-curve calibration Jacobian block is not reconciled.
 - Groups own separate small vectors rather than viewing one flat arena; the effect of an arena was not measured.
-- Results on third-party data (for example the Bank of England curve) are kept local and are not published here.
+- Results on third-party data (for example the Bank of England curve) are kept local and are not published here; see [docs/BOE_CURVE.md](docs/BOE_CURVE.md) for how to run it yourself.
 
 ## Reading the examples
 

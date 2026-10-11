@@ -23,3 +23,5 @@ no AVX-512). Do not combine rows from different machines or runs into one table.
 
 A timing in the paper should name the exact result file that supports it. If a source change alters the timed
 calculation, regenerate the timing instead of relabelling an old one.
+
+To reproduce the private Bank of England check, see [BOE_CURVE.md](BOE_CURVE.md); no BoE figures are published.
