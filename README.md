@@ -62,7 +62,9 @@ The RFR reference example supplements, rather than replaces, the original Hagan 
 
 ## Performance and reproducibility
 
-[**BENCHMARKS.md**](BENCHMARKS.md) collectsFor article readers, [**run the baseline-versus-optimised comparisons directly**](examples/benchmark_paper/README.md#reader-run-comparisons-from-the-article) using the examples' one-command driver; its numerical gates and saved run manifest are part of the evidence. The archived 50.9 ms result has its own historical risk-coordinate and machine provenance.\n\n the distinct benchmark definitions, measured results, baseline comparisons, output sizes and reproduction commands. Keep the paper's bonds/vanilla-swaps workload separate from the seasoned mixed bond/IBOR/OIS library workload, and distinguish full per-instrument ladders from portfolio-only outputs.
+[**BENCHMARKS.md**](BENCHMARKS.md) collects the distinct benchmark definitions, measured results, baseline comparisons, output sizes and reproduction commands. Keep the paper's bonds/vanilla-swaps workload separate from the seasoned mixed bond/IBOR/OIS library workload, and distinguish full per-instrument ladders from portfolio-only outputs.
+
+For article readers, [**run the baseline-versus-optimised comparisons directly**](examples/benchmark_paper/README.md#reader-run-comparisons-from-the-article) using the examples' one-command driver; its numerical gates and saved run manifest are part of the evidence. The archived 50.9 ms result has its own historical risk-coordinate and machine provenance.
 
 In particular, the recorded 500,000-instrument paper timing uses an earlier interval-integrated-forward (`theta`) sensitivity coordinate, while the current source reports sensitivities per unit instantaneous-forward-rate shift. The recorded result is evidence for its stated executable and workload, **not** a newly measured timing for the current implementation.
 
