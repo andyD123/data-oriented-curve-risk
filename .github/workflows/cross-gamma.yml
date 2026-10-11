@@ -22,6 +22,8 @@ on:
       - 'CMakeLists.txt'
       - '.github/workflows/cross-gamma.yml'
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   quantlib-live:
     name: Live QuantLib 1.43 OIS second-order reconciliation
