@@ -10,8 +10,24 @@
 #include <cstdio>
 #include <random>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 using namespace ladder;
+
+// Borrowed GroupLayout and Stencils must never be constructed from
+// temporary objects that die before the cross-gamma view is used.
+using CGV = GroupedDiscountCrossGammaView;
+static_assert(std::is_constructible_v<CGV, GroupLayout&, Stencils&, int,
+                                     const double*, const double*>);
+static_assert(!std::is_constructible_v<CGV, GroupLayout&&, Stencils&, int,
+                                      const double*, const double*>);
+static_assert(!std::is_constructible_v<CGV, const GroupLayout&&, Stencils&, int,
+                                      const double*, const double*>);
+static_assert(!std::is_constructible_v<CGV, GroupLayout&, Stencils&&, int,
+                                      const double*, const double*>);
+static_assert(!std::is_constructible_v<CGV, GroupLayout&, const Stencils&&, int,
+                                      const double*, const double*>);
+
 static void check(bool b,const char* msg){if(!b)throw std::runtime_error(msg);}
 static bool close(double a,double b,double abs=1e-7,double rel=2e-10){
     return std::abs(a-b)<=abs+rel*std::max({1.,std::abs(a),std::abs(b)});
