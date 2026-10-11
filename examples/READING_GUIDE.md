@@ -99,12 +99,17 @@ contains 200 books of 500 instruments, then 20 desks of 10 books. An optional sm
 instrument count is useful for tests. Clearing and rebuilding the result containers
 remains inside the timed operations.
 
-## What this pass does not change
+## Grouped execution and API contracts
 
-`ladder/`, recorded `.txt` and `.svg` evidence, `bench_paper.cpp`, the seasoned library
-benchmark and the QuantLib harnesses are unchanged. Their further presentation work
-is not claimed complete. The historical headline executable still has its own
-integrated-forward units; this readability edit does not resolve that separate issue.
+The [grouped data-flow guide](../docs/GROUPED_DATA_FLOW.md) explains
+`InstrumentSpec → GroupLayout → refresh_table → grouped output`,
+eight-lane packing, wave-traversal invariants, output ownership and
+checked span overloads. The original per-trade and portfolio-reduction
+algorithms now use the same numerical coupon/traversal functions.
 
-No new benchmark framework or runtime type-erased callback layer is introduced.
-The support functions and expression lambdas are ordinary C++ templates.
+The existing paper timing evidence still refers to its **recorded**
+integrated-forward coordinate convention. The current library's
+forward-wave derivatives use a different unit convention; see
+[BENCHMARKS.md](../BENCHMARKS.md) for separate comparison contracts.
+The demonstrations do not imply a general quote-rebootstrap or
+multi-curve second-order pricing engine.

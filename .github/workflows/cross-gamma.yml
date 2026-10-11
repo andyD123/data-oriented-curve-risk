@@ -5,6 +5,8 @@ on:
       - 'ladder/cross_gamma.hpp'
       - 'ladder/scan_gamma_grouped.hpp'
       - 'ladder/scan_grouped_reduce.hpp'
+      - 'ladder/scan_simd.hpp'
+      - 'tests/test_grouped_api.cpp'
       - 'ladder/curve.hpp'
       - 'tests/test_curve.cpp'
       - 'examples/curve_intro/**'
@@ -43,13 +45,13 @@ jobs:
       - name: Configure portable cross-gamma and reader example
         run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF -DLADDER_BUILD_GAMMA_BENCHMARK=ON -DLADDER_BUILD_REDUCE_BENCHMARK=ON
       - name: Build targeted gamma and example executables
-        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive test_gamma_grouped test_grouped_reduce test_curve cross_gamma_example curve_intro scan_rfr bench_gamma_grouped bench_grouped_reduce --parallel 2
+        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive test_gamma_grouped test_grouped_reduce test_grouped_api test_curve cross_gamma_example curve_intro scan_rfr bench_gamma_grouped bench_grouped_reduce --parallel 2
       - name: Smoke-check opt-in gamma benchmark on 2000 mixed instruments
         run: ./build-cross-gamma/examples/benchmark/bench_gamma_grouped 2000 1 ./examples/benchmark/quantlib_example_curves.txt
       - name: Smoke-check 2000-instrument portfolio-only grouped reduction
         run: ./build-cross-gamma/examples/benchmark/bench_grouped_reduce 2000 1 ./examples/benchmark/quantlib_example_curves.txt
       - name: Check fixed, QuantLib-archive, worked-example and offline algebra
-        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|grouped_reduce|rfr_reconcile|curve)'
+        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|grouped_reduce|grouped_api|rfr_reconcile|curve)'
   full-repository:
     name: Full existing suite (${{ matrix.backend }})
     runs-on: ubuntu-24.04

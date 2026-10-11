@@ -9,13 +9,12 @@ convexity adjustment.
 
 ## 1. Already reproducible: five-year QuantLib OIS, two-business-day lag
 
-Original QuantLib generator (immutable source snapshot):
-[ql_waves.cpp at main commit eb02cfdd](https://github.com/andyD123/data-oriented-curve-risk/blob/eb02cfdd8664a2d0ea92c59df928a045c30a5a5d/examples/hagan_waves/ql_waves.cpp).
-The separate cleanup PR #2 proposes removing that generator, but the
-**recorded fixture data remains in the repository**. The cross-gamma tests
-do not compile or link QuantLib; the live Python runner is explicitly optional.
-Historical reference files are in
-[examples/hagan_waves](../../hagan_waves):
+The optional [QuantLib C++ reference generator](../../hagan_waves/ql_waves.cpp)
+and its recorded first-order fixtures are retained in the repository.
+The cross-gamma C++ regression tests do not compile or link QuantLib;
+the separate live Python runner is explicitly optional.
+The original first-order example and its fixtures are documented in
+[examples/hagan_waves](../../hagan_waves/README.md):
 
 - cashflows_wave.txt — dated fixed/OIS/IBOR payoff descriptors.
 - unit_cashflows_wave.txt — the corresponding first-order signed weights.

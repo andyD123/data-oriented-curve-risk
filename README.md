@@ -50,7 +50,7 @@ The simple fixed, IBOR and overnight-ratio replication expressions assume the ca
 
 | Topic | Where to begin |
 |---|---|
-| First-order grouped risk, seasoned bonds/IBOR/OIS swaps | [Library benchmark](examples/benchmark/README.md) |
+| Grouped risk, shared schedule layout and buffer ownership | [Grouped data-flow guide](docs/GROUPED_DATA_FLOW.md) and [library benchmark](examples/benchmark/README.md) |
 | Portfolio-only first-order risk, avoiding the full output matrix | [`scan_grouped_reduce.hpp`](ladder/scan_grouped_reduce.hpp) and [measured comparison](examples/benchmark/README.md#portfolio-only-grouped-reduction) |
 | Fixed-flow and OIS cross-gamma, matrix-free Hessian-vector products | [16-bucket worked example](examples/cross_gamma/README.md) and [grouped gamma guide](docs/GROUPED_CROSS_GAMMA_STAGE2.md) |
 | Independent single-curve overnight-rate bootstrap, quote risk and hedges | [RFR reconciliation](examples/rfr_reconcile/README.md), without QuantLib |

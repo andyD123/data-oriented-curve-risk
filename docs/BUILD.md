@@ -67,6 +67,17 @@ cmake --build build --target curve_intro
 valuation origin, zero/simple-forward rates, bounded/open final-wave
 shocks, and agreement with the production scalar scan.
 
+## Grouped output buffers
+
+The low-level grouped and gamma kernels require caller-owned, 64-byte-aligned
+AoSoA output buffers. For new code prefer their **exact-size**
+`std::span<double>` overloads, which validate the output extent before
+calling the same kernel. The portfolio reduction also provides sized
+spans and optional reusable scratch. The checked Hessian-view constructor
+accepts two input spans but **does not own their memory**.
+
+See the [grouped data-flow and ownership guide](GROUPED_DATA_FLOW.md).
+
 ## Correctness tests
 
 The standard suites cover scalar/grouped discount and projection risk, wave boundaries, malformed inputs, first-order portfolio reduction, optional grouped gamma and its scalar oracle, example smoke tests, and the recorded financial fixtures. Some tests also require Python 3, using only its standard library.
