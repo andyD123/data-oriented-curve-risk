@@ -1,6 +1,6 @@
 # RFR reconciliation (single overnight-indexed curve)
 
-An independent, dependency-free reference for the reconciliation in the paper's Section 11, on a single
+A custom, dependency-free reference written by the authors for the reconciliation in the paper's Section 11, on a single
 SOFR-style discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
 coupon is `N (D(a)/D(b) - 1)` paid at `p`.
 
