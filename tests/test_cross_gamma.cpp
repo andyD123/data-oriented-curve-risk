@@ -6,8 +6,17 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 using namespace ladder;
+
+// A view borrowing a temporary stencil is a use-after-lifetime bug.
+static_assert(!std::is_constructible_v<DiscountCrossGammaView,
+    Stencils&&, std::span<const double>, std::span<const double>>);
+static_assert(!std::is_constructible_v<DiscountCrossGammaView,
+    const Stencils&&, std::span<const double>, std::span<const double>>);
+static_assert(std::is_constructible_v<DiscountCrossGammaView,
+    Stencils&, std::span<const double>, std::span<const double>>);
 
 static void require(bool yes, const char* message) {
     if (!yes) throw std::runtime_error(message);
