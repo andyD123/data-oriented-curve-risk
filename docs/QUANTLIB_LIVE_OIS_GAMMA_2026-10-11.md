@@ -113,12 +113,12 @@ cancellation floor.
 
 ## Limitations / future validation
 
-The live reconciliation supports ONE selected off-diagonal pair
-(accrual wave versus lag-only wave) in two real coupon setups.
-The coupon dates in the current runner coincide with wave boundaries.
-A further independent test should put the accrual end INSIDE a
-wave and exercise a genuinely nonzero lag-related diagonal correction
-(-2*A*r_k*s_k), and ideally compare the complete local Hessian.
+The initial standard and stress scenarios each validated one
+off-diagonal pair with coupon dates on wave boundaries. The follow-up
+interior-wave scenario independently validates a nonzero lag-related
+diagonal correction (-2*A*r_k*s_k) and all 15 unique entries of a
+five-wave Hessian. This is still a fully forecast, same-curve OIS
+reconciliation; general coupon conventions remain outside scope.
 
 No claim is made for already-fixed coupons, observation shifts,
 lockouts, compounded spreads, caps/floors, HJM stochastic settlement
