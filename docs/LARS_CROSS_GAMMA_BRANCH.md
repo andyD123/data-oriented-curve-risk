@@ -35,6 +35,6 @@ To repeat only the gamma checks:
     cmake --build build-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive --parallel 2
     ctest --test-dir build-gamma -R '^cross_gamma' --output-on-failure
 
-The archived QuantLib result is FIRST-ORDER evidence. The mixed-gamma regression independently reprices the exact coupon formula constructed from QuantLib-exported values; a new live QuantLib second-order repricing has not been executed, and no stochastic convexity approximation is being certified.
+The archived QuantLib result is FIRST-ORDER evidence. The mixed-gamma regression independently reprices the exact coupon formula constructed from QuantLib-exported values; the subsequent **external** QuantLib Python 1.43 run reported passing second-order reconciliation for two selected mixed-wave coupon cases; see [the dated evidence](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md). No stochastic convexity approximation is being certified.
 
 The branch is experimental, intentionally does not merge into main, and makes no new production speedup claim.
