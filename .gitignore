@@ -16,3 +16,4 @@ node_modules/
 *.out
 *.toc
 TASKS.md
+examples/benchmark/rfr_curves_boe.txt
