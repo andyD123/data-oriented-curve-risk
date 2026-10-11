@@ -84,6 +84,51 @@ class Shifted:
         return math.exp(self.base.log_df(t) - s)
 
 
+
+class NaturalSpline:
+    """Natural cubic spline through (x_i, y_i)."""
+
+    def __init__(self, x, y):
+        n = len(x) - 1
+        h = [x[i + 1] - x[i] for i in range(n)]
+        a = [0.0] * (n + 1); b = [1.0] * (n + 1); c = [0.0] * (n + 1); r = [0.0] * (n + 1)
+        for i in range(1, n):
+            a[i], b[i], c[i] = h[i - 1], 2 * (h[i - 1] + h[i]), h[i]
+            r[i] = 6 * ((y[i + 1] - y[i]) / h[i] - (y[i] - y[i - 1]) / h[i - 1])
+        for i in range(1, n + 1):                          # Thomas algorithm
+            w = a[i] / b[i - 1]
+            b[i] -= w * c[i - 1]; r[i] -= w * r[i - 1]
+        m = [0.0] * (n + 1)
+        m[n] = r[n] / b[n]
+        for i in range(n - 1, -1, -1):
+            m[i] = (r[i] - c[i] * m[i + 1]) / b[i]
+        self.x, self.y, self.h, self.m = x, y, h, m
+
+    def __call__(self, t):
+        x, y, h, m = self.x, self.y, self.h, self.m
+        if t >= x[-1]:
+            return y[-1]
+        i = 0
+        while t >= x[i + 1]:
+            i += 1
+        u, v = x[i + 1] - t, t - x[i]
+        return (m[i] * u ** 3 + m[i + 1] * v ** 3) / (6 * h[i]) + (y[i] / h[i] - m[i] * h[i] / 6) * u \
+            + (y[i + 1] / h[i] - m[i + 1] * h[i] / 6) * v
+
+
+class CubicZeroCurve:
+    """Pricing curve: natural cubic spline in the zero rate through the pillar nodes (flat beyond the last)."""
+
+    def __init__(self, base, bump=None):
+        z = [-base.L[k] / base.B[k] for k in range(1, len(base.B))]
+        z = [z[0]] + z                                       # node at t=0 repeats the first zero rate
+        if bump:
+            z = [z[0] + bump[0]] + [v + bump[k + 1] for k, v in enumerate(z[1:])]
+        self.z = NaturalSpline(base.B, z)
+
+    def df(self, t):
+        return 1.0 if t <= 0 else math.exp(-self.z(t) * t)
+
 # ---------------------------------------------------------------------------- instruments
 def swap(periods, fixed, spread=0.0):
     """Payer OIS-style swap: periods = [(notional, a, b, p)]; pays fixed, receives compounded RFR + spread."""
@@ -262,15 +307,17 @@ def check(d):
         return (4 * d2 - d1) / 3
 
     book_wave = [math.fsum(scan[i][k] for i in range(nbook)) for k in range(K)]
-    worst = 0.0; largest = 0.0; nonzero = 0
+    worst = 0.0; largest = 0.0; nonzero = 0; above = 0
     for j in range(K):
         direct = rich_derivative(total_pv, j)
         Jcol = rich_derivative(f_of, j)
         nonzero += sum(1 for v in Jcol if abs(v) > 1e-9)
+        above += sum(1 for m, v in enumerate(Jcol) if m < j and abs(v) > 1e-9)
         pred = math.fsum(g * jf for g, jf in zip(book_wave, Jcol))
         worst = max(worst, abs(pred - direct)); largest = max(largest, abs(direct))
+    print(f'5y spot OIS base PV {pv(insts[0], base):.4f}')
     print(f'\nquote risk ({K} quotes): max |wave x Jacobian - re-bootstrap| = {worst:.1e}; largest sensitivity {largest:.1e} '
-          f'per unit rate; ratio {worst / largest:.1e}; Jacobian non-zeros {nonzero} of {K * K}')
+          f'per unit rate; ratio {worst / largest:.1e}; Jacobian non-zeros {nonzero} of {K * K} ({above} outside the triangle)')
     ok &= worst / largest < 1e-8
 
     # 5. hedge: one wave per par OIS at its maturity, lower-triangular, back-substitution
@@ -285,6 +332,48 @@ def check(d):
           f'(book ladder scale {max(abs(v) for v in book_wave):.1e})')
     print('hedge notionals (1M units):', ' '.join(f'{T}y:{v:.3f}' for T, v in zip(PILLARS, h)))
     ok &= resid < 1e-6 * max(abs(v) for v in book_wave)
+
+
+    # 6. negative control: node bumps of a cubic-spline pricing curve leak; the box scan does not represent them
+    name5, inst5 = book()[6]
+    cubic = CubicZeroCurve(base)
+    waves = [math.fsum(-x * overlap(B, k, t) for t, x in unit_cashflows(inst5, cubic)) for k in range(1, K + 1)]
+    h_ = 1e-6
+    actual = []
+    for k in range(K):
+        up, dn = [0.0] * (K + 1), [0.0] * (K + 1)
+        up[k + 1], dn[k + 1] = h_, -h_
+        actual.append((pv(inst5, CubicZeroCurve(base, up)) - pv(inst5, CubicZeroCurve(base, dn))) / (2 * h_))
+    ell = [B[k] - B[k - 1] for k in range(1, K + 1)]
+    pred = [waves[k] * B[k + 1] / ell[k] - (waves[k + 1] * B[k + 1] / ell[k + 1] if k + 1 < K else 0.0)
+            for k in range(K)]
+    scale = max(abs(v) for v in actual)
+    print(f"\nnegative control, {name5}: node bump of the cubic zero curve vs scan-predicted node risk")
+    print(f"{'node':>6s} {'cubic bump':>14s} {'scan-predicted':>15s} {'diff/max':>9s}")
+    worst_nc = 0.0
+    for k in range(K):
+        diff = (actual[k] - pred[k]) / scale
+        worst_nc = max(worst_nc, abs(diff))
+        print(f'{PILLARS[k]:5d}y {actual[k]:14.2f} {pred[k]:15.2f} {diff:9.2%}')
+    beyond = [actual[k] for k in range(K) if PILLARS[k] > 5 and abs(pred[k]) < 1e-9]
+    print(f'worst disagreement {worst_nc:.1%} of the largest node risk; nodes beyond the 5y2m maturity with non-zero cubic '
+          f'risk but zero scan risk: {sum(1 for v in beyond if abs(v) > 1e-6)} of {len(beyond)}, largest {max(map(abs, beyond)):.1f}')
+    ok &= worst_nc > 0.01
+
+    # 7. same node bump on the log-linear curve: exact agreement (control for the control)
+    ll_actual = []
+    waves_ll = scan[6]
+    for k in range(K):
+        up, dn = quotes[:], quotes[:]
+        c_up = Curve(base.B, base.L[:]); c_dn = Curve(base.B, base.L[:])
+        c_up.L[k + 1] -= h_ * base.B[k + 1]; c_dn.L[k + 1] += h_ * base.B[k + 1]
+        ll_actual.append((pv(inst5, c_up) - pv(inst5, c_dn)) / (2 * h_))
+    pred_ll = [waves_ll[k] * B[k + 1] / ell[k] - (waves_ll[k + 1] * B[k + 1] / ell[k + 1] if k + 1 < K else 0.0)
+               for k in range(K)]
+    sc = max(abs(v) for v in ll_actual)
+    d_ll = max(abs(a - b) for a, b in zip(ll_actual, pred_ll)) / sc
+    print(f'same node bump on the log-linear curve: max difference {d_ll:.1e} of the largest node risk')
+    ok &= d_ll < 1e-8
 
     print('\nreconciliation:', 'PASS' if ok else 'FAIL')
     return 0 if ok else 1
