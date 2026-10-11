@@ -7,6 +7,8 @@ on:
       - 'ladder/scan_simd.hpp'
       - 'tests/test_rfr_reconcile.py'
       - 'examples/rfr_reconcile/**'
+      - 'ladder/curve.hpp'
+      - 'tests/test_curve.cpp'
       - 'tests/test_gamma_grouped.cpp'
       - 'examples/benchmark/bench_gamma_grouped.cpp'
       - 'tests/test_cross_gamma.cpp'
@@ -24,11 +26,11 @@ jobs:
       - name: Configure portable cross-gamma and reader example
         run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_GAMMA_BENCHMARK=ON
       - name: Build targeted gamma and example executables
-        run: cmake --build build-cross-gamma --target test_cross_gamma test_gamma_grouped cross_gamma_example scan_wave bench_gamma_grouped --parallel 2
+        run: cmake --build build-cross-gamma --target test_cross_gamma test_gamma_grouped test_curve cross_gamma_example scan_wave bench_gamma_grouped --parallel 2
       - name: Smoke-check opt-in gamma benchmark on 2000 mixed instruments
         run: ./build-cross-gamma/examples/benchmark/bench_gamma_grouped 2000 1 ./build-cross-gamma/examples/benchmark/rfr_curves.txt
       - name: Check fixed, worked-example and offline algebra
-        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|rfr_reconcile|rfr_projection)'
+        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|curve|rfr_reconcile|rfr_projection)'
   full-repository:
     name: Full existing suite (${{ matrix.backend }})
     runs-on: ubuntu-24.04
