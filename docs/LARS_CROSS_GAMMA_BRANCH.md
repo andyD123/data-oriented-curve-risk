@@ -8,10 +8,10 @@ Scope: separate fixed-cashflow gamma second pass, lazy off-diagonal identity `H[
 
 Caveats: Hessian factorisation by itself applies to fixed discounted cashflows. Fully forecast single-curve OIS discount-ratio coupons require the stated lag correction; other nonlinear coupon conventions, stochastic convexity and full QuantLib second-order repricing require separate validation. The archived implementation had a pre-first-boundary bug and an overbroad nonlinear Hessian claim; neither is imported as-is.
 
-Status: experimental, not publication-benchmarked, no claims of unchanged bitwise rounding or improved mixed-book speed. Run the focused local C++20 regression before integrating with the core CI. For the full independent QuantLib investigation, consult the handoff ZIP prepared on 10 October 2026.
+Status: experimental, not publication-benchmarked, no claims of unchanged bitwise rounding or improved mixed-book speed. Run the focused local C++20 regression before integrating with the core CI. For the full independent QuantLib investigation, consult the handoff ZIP.
 
 
-## Correctness follow-up 
+## Correctness follow-up
 
 The optional gamma calculation remains separate from the existing first-order grouped path.
 
@@ -35,7 +35,7 @@ To repeat only the gamma checks:
     cmake --build build-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive --parallel 2
     ctest --test-dir build-gamma -R '^cross_gamma' --output-on-failure
 
-The archived QuantLib result is FIRST-ORDER evidence. The mixed-gamma regression independently reprices the exact coupon formula constructed from QuantLib-exported values; the subsequent **external** QuantLib Python 1.43 run reported passing second-order reconciliation for two selected mixed-wave coupon cases; see [the dated evidence](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md). No stochastic convexity approximation is being certified.
+The archived QuantLib result is FIRST-ORDER evidence. The mixed-gamma regression independently reprices the exact coupon formula constructed from QuantLib-exported values; the subsequent **external** QuantLib Python 1.43 run reported passing second-order reconciliation for two selected mixed-wave coupon cases; see [the validation evidence](QUANTLIB_LIVE_OIS_GAMMA.md). No stochastic convexity approximation is being certified.
 
 Historical note: this text originally described an experimental branch;
 Stage 1 was subsequently merged as PR #3 (commit

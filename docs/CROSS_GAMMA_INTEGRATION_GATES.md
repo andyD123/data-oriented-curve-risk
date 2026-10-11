@@ -1,4 +1,4 @@
-# Cross-gamma integration gates (11 October 2026)
+# Cross-gamma integration gates
 
 This checklist separates **safe additive research integration** from **production risk-path integration**. The existing first-order scalar and SIMD algorithms are not changed by PR #3.
 
@@ -6,14 +6,14 @@ This checklist separates **safe additive research integration** from **productio
 
 | Gate | Evidence | Status |
 |---|---|---|
-| Branch mergeability | Draft PR #3 from `main`, no production kernel edits | Passed (as checked 11 Oct 2026) |
+| Branch mergeability | Draft PR #3 from `main`, no production kernel edits | Passed at integration review |
 | C++20 portable build | GitHub Actions run 38096221423 | Passed |
 | Fixed-flow diagonal and cross-gamma | `test_cross_gamma`, 100,000 seeded cashflow oracle, boundary cases | Passed |
 | OIS lag rank-two correction | Synthetic analytic differentiation, in-place HVP | Passed |
 | Historical QuantLib five-year lagged OIS | Recorded *first-order* QuantLib comparison, reconstructed-product gamma test | Passed within documented scope |
 | Reader example | Sixteen irregular waves, open-final, zero/positive-lag OIS, monetary cross-PV | Passed |
 | Offline Python OIS algebra | `--scenario offline` | Passed |
-| Live QuantLib second derivatives | Independent cloud Linux, QuantLib Python 1.43; two selected mixed pairs | **Reported PASS 11 Oct 2026**; see dated validation record |
+| Live QuantLib second derivatives | Independent cloud Linux, QuantLib Python 1.43; two selected mixed pairs | **Reported PASS**; see the validation record |
 | MSVC and macOS/Clang PR CI | Platform matrix | **Not run** |
 | Production 500k mixed-book performance | Separate diagonal pass on current grouped layout, with no dense Hessian output | **Not measured** |
 | PR #2 compatibility | Original QuantLib generator is deleted by standalone-cleanup PR #2 | Partial: source provenance link pinned |
@@ -51,14 +51,14 @@ On a checkout that still has the historical QuantLib generator, add `-DLADDER_BU
 
 **Recommendation:** merging PR #3 as an optional experimental research facility is reasonable once the normal repository build is rechecked; production status needs the missing cross-platform tests, live QuantLib second-order reference (if claimed), and a measured grouped implementation without per-instrument heap churn.
 
-## Post-merge external validation update (11 October 2026)
+## Post-merge external validation
 
 Stage 1 PR #3 was merged into main as commit
 8ab6f4beeb60519f33cc507a754188962e627bb3.
 The initial integration gates above document their historical status.
 The independent QuantLib Python 1.43 tests subsequently passed for the
 standard and stressed OIS cross-gamma pair, with full numeric evidence in
-[the dated record](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+[the validation record](QUANTLIB_LIVE_OIS_GAMMA.md).
 The subsequent [live QuantLib Actions run 38100830063](https://github.com/andyD123/data-oriented-curve-risk/actions/runs/38100830063)
 also passed a genuinely nonzero interior-wave diagonal correction and
 all 15 unique elements of that coupon's 5x5 Hessian. Stage-2 grouped

@@ -1,4 +1,4 @@
-# Stage 2 — optional grouped cross-gamma (11 October 2026)
+# Stage 2 — optional grouped cross-gamma
 
 ## Implementation
 
