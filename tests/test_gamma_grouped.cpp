@@ -107,6 +107,56 @@ static void test(int seed,bool open){
     }
     for(int k=0;k<Sd.K();++k)
         check(close(portfolio[k],sum[k],5e-5,5e-10),"portfolio reduced gamma");
+    // Reuse the actual first-order AoSoA buffer to recover cross-gamma
+    // on demand; no instrument-by-instrument K*K output.
+    double* delta=(double*)allocate_aligned(
+        L.groups.size()*L.stride(Sd.K(),Sp.K())*sizeof(double));
+    scan_grouped<Store::normal>(L,Sd,Sp,delta);
+    GroupedDiscountCrossGammaView view(L,Sd,Sp.K(),delta,out);
+    GroupGammaScratch view_scratch;
+    std::vector<double> shock(Sd.K());
+    for(int k=0;k<Sd.K();++k)shock[k]=.002*(k%4-2);
+    for(size_t gi=0;gi<L.groups.size();++gi){
+        const Group& G=L.groups[gi];
+        for(int lane=0;lane<G.n_valid;++lane){
+            const InstrumentSpec& spec=book[G.inst[lane]];
+            const auto exact=[&](int j,int k){
+                double value=0;
+                const auto h=[&](int wave,double t){return Sd.overlap(wave+1,t);};
+                for(const auto& f:spec.fixed){
+                    const double t=f.day/DPY;
+                    value+=f.amount*df(t)*h(j,t)*h(k,t);
+                }
+                for(const auto& f:spec.flt){
+                    const double t=f.pay_day/DPY;
+                    value+=f.scale*(pf(f.a_day/DPY)/pf(f.b_day/DPY)-1.)*
+                           df(t)*h(j,t)*h(k,t);
+                }
+                for(const auto& o:spec.ois){
+                    const double a=o.a_day/DPY,b=o.b_day/DPY,p=o.pay_day/DPY;
+                    const double A=o.N*df(p)*df(a)/df(b),C=o.N*df(p);
+                    const double pj=h(j,p),pk=h(k,p);
+                    const double qj=pj+h(j,a)-h(j,b),qk=pk+h(k,a)-h(k,b);
+                    value+=A*qj*qk-C*pj*pk;
+                }
+                return value;
+            };
+            auto hv=shock;
+            view.multiply(gi,lane,hv,hv,view_scratch); // aliased HVP is safe
+            for(int j=0;j<Sd.K();++j){
+                double reference=0;
+                for(int k=0;k<Sd.K();++k){
+                    const double entry=exact(j,k);
+                    check(close(view.at(gi,lane,j,k),entry,3e-7,5e-10),
+                          "grouped cross-gamma view vs original coupon Hessian");
+                    reference+=entry*shock[k];
+                }
+                check(close(hv[j],reference,3e-7,5e-10),
+                      "matrix-free corrected HVP (no double-count diagonal)");
+            }
+        }
+    }
+    free_aligned(delta);
     free_aligned(out);free_aligned(streaming);
     Stencils wrong=Sd;wrong.B[2]+=.01;
     bool caught=false;
