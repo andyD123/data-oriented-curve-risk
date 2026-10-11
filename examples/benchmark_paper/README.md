@@ -9,6 +9,25 @@ that historical executable used interval-integrated-forward coordinates. The two
 known bucket-length scaling, but the old timing is kept as historical evidence and is not relabelled as a fresh
 run of the current source. The broader library/OIS workload is separate — do not mix the generations.
 
+
+## Reader-run comparisons from the article
+
+The one-command [comparison runner](run_comparisons.py) invokes existing, correctness-checked C++ executables rather than a reconstructed or hard-coded timing table. Start with a small book, on x86-64 hardware capable of AVX-512 and a GCC/Clang C++20 toolchain with `<experimental/simd>`:
+
+```sh
+# From repository root; configures and builds the relevant Release target automatically
+python3 examples/benchmark_paper/run_comparisons.py                  # 2,000 trades, bump/reprice vs scan and grouped SIMD
+python3 examples/benchmark_paper/run_comparisons.py --suite all      # add date-cache ordering, adjoint and aggregation
+python3 examples/benchmark_paper/run_comparisons.py --suite all --full # 500,000 trades; can be slow and memory-intensive
+python3 examples/benchmark_paper/run_comparisons.py --suite write-floor --full
+```
+
+The first suite compares `BASE` central-difference wave repricing, `SCAN`, and eight-lane grouped kernels under the same generated paper-book contract. The `cache` suite compares random, sorted and schedule-grouped processing under the same 64-column scenario cache. `adjoint` contrasts a tape-free direct-overlap calculation, the scalar library scan and a deliberately simple recorded-tape prototype. `aggregation` compares contiguous arrays, ordered maps and hash maps with identical sensitivity inputs. `write-floor` only times streaming writes for the **500,000-instrument padded output byte count**; it is neither a memory-copy baseline nor a calculation that reads risk inputs.
+
+Each numerical comparison reports a correctness gate and fails with a nonzero status on disagreement. The driver preserves raw console logs and a `manifest.json` with the source revision, platform, arguments and commands under `build/paper-comparisons/reader-results/`. Pass `--build-dir` or `--output-dir` to change the location; `--no-build` uses prebuilt Release executables. These tests do **not** all time the same phase of one algorithm. Never divide runtimes from different suites as though they were a controlled A/B comparison.
+
+**Provenance:** the original 50.9 ms paper log is historical evidence from an interval-integrated-forward (`theta`) coordinate, whereas these current-source examples return first derivatives per unit instantaneous-forward shift. The financial outputs are related by bucket widths, but current timings must be reported as new observations on the executing machine. The recorded results, [measurement definitions](../../BENCHMARKS.md) and cross-gamma examples remain separate evidence.
+
 ```
 g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -Wno-unused-result bench_paper.cpp -o bench_paper
 ./bench_paper 500000 1 3        # N, run baseline (1/0), repetitions
