@@ -91,10 +91,22 @@ The runner prints the QuantLib version, wave dates, real coupon price,
 analytic expectations, residuals and mixed finite-difference convergence.
 It exits nonzero on failure.
 
-**Execution boundary:** This project's Python file passes its offline
-algebra check and syntax check. The authoring environment did not have
-QuantLib installed, so **a live QuantLib second-order pass has not been
-claimed or recorded**.
+**External live execution (11 October 2026):** An independent
+cloud Linux run with **QuantLib Python 1.43 / GCC 13.3** successfully ran
+both cases, after the initial authoring environment lacked QuantLib.
+The original external log was reported, not independently captured by this
+CI runner. Numerical results and provenance appear in
+[the dated QuantLib 1.43 record](../../../docs/QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+
+| Test | Frozen cross-gamma | Rank-two correction | Correct cross-gamma |
+|---|---:|---:|---:|
+| Standard two-calendar-day lag | +12.032090 | -1369.910822 | **-1357.878733** |
+| Stressed 93-calendar-day lag | +4252.547013 | -123973.780664 | **-119721.233651** |
+
+Both mixed finite-difference sequences converge quadratically towards the
+analytic gamma. The check covers a selected off-diagonal risk pair for each
+fully forecast same-curve coupon, **not** stochastic payment-delay convexity,
+all Hessian entries, historical fixings or quote-level risks.
 
 ## 3. Mathematics and limitations
 
