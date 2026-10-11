@@ -81,6 +81,18 @@ ctest --test-dir build-gamma --output-on-failure -R '^gamma_grouped$'
 For AVX-512, select LADDER_LANES=AVX512 on a compatible host.
 For a portable build, select LADDER_LANES=PORTABLE.
 
+## Independent QuantLib 1.43 second-order gate
+
+[Live QuantLib CI run 38100830063](https://github.com/andyD123/data-oriented-curve-risk/actions/runs/38100830063)
+passed three fully forecast same-curve OIS cases, including an accrual-end
+date lying inside a wave. The interior wave-3 gamma consists of
+**-461.423463 frozen risk minus 833.219334 lag correction**,
+giving **-1294.642797**. Live QuantLib finite differences and the
+complete 5x5 Hessian agreed within the test tolerances. This verifies the
+financially nontrivial diagonal lag correction absent from the earlier
+boundary-aligned tests. The test is a curve-wave derivative, not
+stochastic payment-delay convexity or quote-rebootstrap gamma.
+
 ## Safe usage
 
 ~~~cpp
