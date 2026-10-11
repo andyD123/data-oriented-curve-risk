@@ -19,7 +19,7 @@ Do not combine rows from different machines/runs into one benchmark table.
 | Historical write-only comparison | 270 MiB / 15.7 ms | Original source/log is not currently in the repository. |
 | Current exact-size write reference | `write_floor`, `recorded_2026-10-06_write_floor.txt` | Reproducible current source, different host, not publication timing. |
 | Eight-instrument wave reconciliation | `scan_wave`, CTest replay | Recorded reference replay is current. |
-| Seven-instrument Hagan hedge | `python3 examples/hagan_waves/hagan_hedge.py --book paper7` | Named population; explicit back-substitution. |
+| RFR hedge reconciliation | `python3 examples/rfr_reconcile/rfr_reference.py check <dir>` | 15 illustrative par-OIS hedges; see the example README. |
 
 ## Publication rule
 

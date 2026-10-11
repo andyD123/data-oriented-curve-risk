@@ -17,7 +17,7 @@ Run `ctest -R rfr_reconcile_replay`, or by hand:
 
 ```sh
 python3 examples/rfr_reconcile/rfr_reference.py generate /tmp/rfr
-build/examples/hagan_waves/scan_wave /tmp/rfr
+build/examples/rfr_reconcile/scan_wave /tmp/rfr
 python3 examples/rfr_reconcile/rfr_reference.py check /tmp/rfr
 ```
 

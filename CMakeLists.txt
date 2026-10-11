@@ -162,7 +162,7 @@ if(LADDER_BUILD_EXAMPLES)
     set(_bench_for_tests bench_library)
   endif()
   ladder_example(aggregation aggregation agg.cpp)
-  ladder_example(scan_wave hagan_waves scan_wave.cpp)
+  ladder_example(scan_wave rfr_reconcile scan_wave.cpp)
   if(LADDER_BUILD_WIDE_GROUP_EXPERIMENT)
     ladder_example(wide_group_bench benchmark wide_group_bench.cpp)
   endif()
@@ -188,7 +188,7 @@ if(LADDER_BUILD_EXAMPLES)
     if(Python3_Interpreter_FOUND)
       add_test(NAME wave_replay_and_input_checks COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_examples.py" "$<TARGET_FILE:scan_wave>"
-        "$<TARGET_FILE:${_bench_for_tests}>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/hagan_waves")
+        "$<TARGET_FILE:${_bench_for_tests}>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
       add_test(NAME rfr_reconcile_replay COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py" "$<TARGET_FILE:scan_wave>"
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")

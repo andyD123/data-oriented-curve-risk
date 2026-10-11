@@ -119,8 +119,6 @@ available. Zero external dependencies were used.
 - `bench_paper.cpp` now emits per-unit instantaneous-forward-rate shifts, has an unequal-bucket unit self-check,
   checks normal and streaming output independently, checks the repeated-valuation baseline, and returns non-zero
   on a failed gate. The historical 50.91 ms file is retained and labelled as pre-alignment theta units.
-- `hagan_hedge.py` defaults to named `paper7`, excluding the 35y terminal-wave test bond, and uses explicit
-  back-substitution. `extended8` is a separate experiment.
 - `write_floor.cpp` provides a reproducible exact-size write reference. The original historical 270 MiB / 15.7 ms
   source/log is still unavailable and remains labelled historical.
 
