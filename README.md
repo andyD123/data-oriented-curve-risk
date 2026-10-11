@@ -11,7 +11,9 @@ here is the data-oriented organisation: shared dates, grouped instruments and re
 ## Reading the examples
 
 The [demonstrator reading guide](examples/READING_GUIDE.md) points to the scenario-cache,
-adjoint and aggregation experiments. These now use short named operations and a small
+adjoint and aggregation experiments. For the exact **Hagan-wave cross-gamma**
+extension, start with the [16-bucket worked example](examples/cross_gamma/README.md)
+and its [optional QuantLib reconciliation](examples/cross_gamma/quantlib/README.md). These now use short named operations and a small
 `measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
 This is a readability pass on those three examples, not a rewrite of the scan library.
 
