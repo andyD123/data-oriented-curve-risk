@@ -51,6 +51,7 @@ static void test(int seed,bool open){
     scan_grouped_gamma_diagonal<Store::streaming>(L,Sd,streaming,scratch);
     std::vector<double> portfolio(Sd.K()),sum(Sd.K(),0.);
     scan_grouped_gamma_portfolio_diagonal(L,Sd,portfolio.data(),scratch);
+    GammaDiagonalScratch scalar_scratch; // reused across all instruments
     double worst=0.;int checked=0;
     for(size_t gi=0;gi<L.groups.size();++gi){
         const Group& G=L.groups[gi];
@@ -74,7 +75,7 @@ static void test(int seed,bool open){
                 replicate_ois(o.N,o.a_day/DPY,o.b_day/DPY,o.pay_day/DPY,df,cash);
             sort_by_time(cash);
             std::vector<double> scalar(Sd.K());
-            scan_discount_gamma_diagonal(Sd,cash,scalar.data());
+            scan_discount_gamma_diagonal(Sd,cash,scalar_scratch,scalar.data());
             for(int k=0;k<Sd.K();++k){
                 const size_t slot=gi*grouped_gamma_stride(Sd.K())+(size_t)k*LANES+lane;
                 const double got=out[slot];
