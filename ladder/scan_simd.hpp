@@ -192,11 +192,29 @@ inline void scan_grouped(const GroupLayout& L, const Stencils& Sd,
     scan_grouped<policy>(L,Sd,Sp,out.data());
 }
 
-// per-instrument view of the grouped output: K_disc then K_proj values for instrument i
-inline void gather(const GroupLayout& L, int Kd, int Kp, const double* out, int group, int lane, double* dst)
-{
-    const double* g = out + (size_t)group * L.stride(Kd, Kp);
-    for (int k = 0; k < Kd + Kp; ++k) dst[k] = g[(size_t)k * LANES + lane];
+// Per-instrument view of the grouped output: K_disc then K_proj values.
+// Raw-pointer form is retained for callers managing their own buffers.
+inline void gather(const GroupLayout& L, int Kd, int Kp,
+                   const double* out, int group, int lane, double* dst) {
+    const double* g = out + static_cast<size_t>(group) *
+                           detail::grouped_row_stride(Kd, Kp);
+    for (size_t k=0; k<static_cast<size_t>(Kd)+static_cast<size_t>(Kp); ++k)
+        dst[k] = g[k*LANES + lane];
+}
+
+// Checked per-instrument read. Validates live lanes and full AoSoA extent
+// rather than allowing padded lanes to be mistaken for real instruments.
+inline void gather(const GroupLayout& L, int Kd, int Kp,
+                   std::span<const double> input,
+                   int group, int lane, std::span<double> output) {
+    const size_t waves=static_cast<size_t>(Kd)+static_cast<size_t>(Kp);
+    const size_t expected=detail::grouped_output_entries(L,Kd,Kp);
+    if (input.size()!=expected || output.size()!=waves)
+        throw std::invalid_argument("gather: wrong buffer size");
+    if (group<0 || static_cast<size_t>(group)>=L.groups.size() ||
+        lane<0 || lane>=L.groups[group].n_valid)
+        throw std::out_of_range("gather: invalid group/lane");
+    gather(L,Kd,Kp,input.data(),group,lane,output.data());
 }
 
 } // namespace ladder
