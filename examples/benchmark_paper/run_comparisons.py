@@ -40,6 +40,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--full", action="store_true", help="500,000 instruments, three repetitions (slow and memory-heavy)")
     parser.add_argument("--instruments", type=int, help="override instrument count (default 2,000, or 500,000 with --full)")
     parser.add_argument("--repetitions", type=int, help="override repetition count (default 1, or 3 with --full)")
+    parser.add_argument("--aggregation-instruments", type=int, help="override aggregation-book size (defaults to min(instruments, 100000) to contain map memory use)")
     parser.add_argument("--skip-repricing-baseline", action="store_true", help="skip only the slow per-scenario BASE in bench_paper")
     parser.add_argument("--build-dir", type=Path, default=Path("build/paper-comparisons"))
     parser.add_argument("--no-build", action="store_true", help="use already compiled Release targets")
@@ -100,6 +101,9 @@ def main() -> int:
         raise ValueError("instruments must be from 1 to 10,000,000")
     if not 1 <= reps <= 100:
         raise ValueError("repetitions must be from 1 to 100")
+    aggregation_size = args.aggregation_instruments if args.aggregation_instruments is not None else min(size, 100000)
+    if not 1 <= aggregation_size <= 1000000:
+        raise ValueError("aggregation-instruments must be from 1 to 1,000,000")
     suites = DEFAULT_SUITES if args.suite == "all" else (args.suite,)
     if "write-floor" in suites and size != 500000:
         raise ValueError("write-floor measures the recorded 500,000-trade padded output (270,479,616 bytes); "
@@ -109,7 +113,7 @@ def main() -> int:
     if not results_dir.is_absolute():
         results_dir = ROOT / results_dir
     print("Reader comparisons: independent experiments, not one interchangeable timing ladder.")
-    print(f"Book size: {size:,}; repetitions: {reps}; suite(s): {', '.join(suites)}")
+    print(f"Paper/cache/adjoint book: {size:,}; aggregation book: {aggregation_size:,}; repetitions: {reps}; suite(s): {', '.join(suites)}")
     print("The C++ programs themselves check their numerical outputs and return nonzero on failure.")
     print("Historical 50.9 ms figures use a different risk coordinate; current-source measurements replace neither their hardware nor their provenance.\n")
 
@@ -133,6 +137,7 @@ def main() -> int:
         "python": sys.version.split()[0],
         "build_directory": str(build),
         "instruments": size,
+        "aggregation_instruments": aggregation_size,
         "repetitions": reps,
         "suite": list(suites),
         "comparison_scopes_are_separate": True,
@@ -153,7 +158,7 @@ def main() -> int:
             elif name == "adjoint":
                 command = [str(binary), str(size), str(reps)]
             elif name == "aggregation":
-                command = [str(binary), str(size)]
+                command = [str(binary), str(aggregation_size)]
             else:
                 command = [str(binary), str(PAPER_PADDED_BYTES_500K), str(reps)]
             print(f"\n=== {name}: {TARGETS[name]} ===", flush=True)
