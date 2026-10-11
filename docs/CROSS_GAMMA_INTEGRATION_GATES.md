@@ -13,7 +13,7 @@ This checklist separates **safe additive research integration** from **productio
 | Historical QuantLib five-year lagged OIS | Recorded *first-order* QuantLib comparison, reconstructed-product gamma test | Passed within documented scope |
 | Reader example | Sixteen irregular waves, open-final, zero/positive-lag OIS, monetary cross-PV | Passed |
 | Offline Python OIS algebra | `--scenario offline` | Passed |
-| Live QuantLib second derivatives | `--scenario standard` and `stress` | **Not run** |
+| Live QuantLib second derivatives | Independent cloud Linux, QuantLib Python 1.43; two selected mixed pairs | **Reported PASS 11 Oct 2026**; see dated validation record |
 | MSVC and macOS/Clang PR CI | Platform matrix | **Not run** |
 | Production 500k mixed-book performance | Separate diagonal pass on current grouped layout, with no dense Hessian output | **Not measured** |
 | PR #2 compatibility | Original QuantLib generator is deleted by standalone-cleanup PR #2 | Partial: source provenance link pinned |
@@ -50,3 +50,14 @@ ctest --test-dir build-gamma --output-on-failure -R '^cross_gamma'
 On a checkout that still has the historical QuantLib generator, add `-DLADDER_BUILD_QUANTLIB=OFF` to avoid building its optional targets.
 
 **Recommendation:** merging PR #3 as an optional experimental research facility is reasonable once the normal repository build is rechecked; production status needs the missing cross-platform tests, live QuantLib second-order reference (if claimed), and a measured grouped implementation without per-instrument heap churn.
+
+## Post-merge external validation update (11 October 2026)
+
+Stage 1 PR #3 was merged into main as commit
+8ab6f4beeb60519f33cc507a754188962e627bb3.
+The initial integration gates above document their historical status.
+The independent QuantLib Python 1.43 tests subsequently passed for the
+standard and stressed OIS cross-gamma pair, with full numeric evidence in
+[the dated record](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+An interior-wave **diagonal** lag check, comprehensive contract/fixing
+coverage and stage-2 full grouped risk remain separate matters.
