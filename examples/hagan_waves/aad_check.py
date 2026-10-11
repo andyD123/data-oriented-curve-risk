@@ -1,6 +1,6 @@
 """Adjoint (reverse-mode) reference for the wave sensitivities.
-Under BoxShifted, QuantLib's PV is  PV(delta) = sum_i x_i * prod_k exp(-delta_k * ov_ki)  (+ projection terms),
-with x_i QuantLib's own discounted unit cashflows (unit_cashflows_wave.txt). This script tapes that expression
+Under BoxShifted, the analytical PV is  PV(delta) = sum_i x_i * prod_k exp(-delta_k * ov_ki)  (+ projection terms),
+with x_i discounted unit cashflows (unit_cashflows_wave.txt). This script tapes that expression
 explicitly and runs the reverse pass at delta = 0: an exact derivative with no step size.
 Expected: agreement with the scan at rounding (1e-16 relative); the tape has N*K nodes, the scan N+K operations.
 """

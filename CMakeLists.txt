@@ -19,11 +19,6 @@ option(LADDER_BUILD_PAPER_BENCHMARKS "Build historical paper benchmarks (require
 option(LADDER_BUILD_WIDE_GROUP_EXPERIMENT "Build experimental variable-width schedule-group benchmark" OFF)
 option(LADDER_BUILD_GAMMA_BENCHMARK "Build optional 500k grouped gamma benchmark" OFF)
 option(LADDER_DUAL_ISA "Build the vectorised tests and benchmarks twice, as _avx2 and _avx512 targets (x86)" OFF)
-set(LADDER_BUILD_QUANTLIB "AUTO" CACHE STRING "QuantLib generators: AUTO, ON, OFF")
-set_property(CACHE LADDER_BUILD_QUANTLIB PROPERTY STRINGS AUTO ON OFF)
-if(NOT LADDER_BUILD_QUANTLIB MATCHES "^(AUTO|ON|OFF)$")
-  message(FATAL_ERROR "LADDER_BUILD_QUANTLIB must be AUTO, ON or OFF")
-endif()
 
 add_library(ladder INTERFACE)
 add_library(ladder::ladder ALIAS ladder)
@@ -45,6 +40,7 @@ if(LADDER_NATIVE_ARCH)
   endif()
   target_compile_options(ladder INTERFACE -march=native)
 endif()
+
 if(LADDER_LANES MATCHES "^AVX(2|512)$")
   if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x86|i.86)$")
     message(FATAL_ERROR "The selected intrinsics backend requires an x86 target")
@@ -218,6 +214,9 @@ if(LADDER_BUILD_EXAMPLES)
       add_test(NAME wave_replay_and_input_checks COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_examples.py" "$<TARGET_FILE:scan_wave>"
         "$<TARGET_FILE:${_bench_for_tests}>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/hagan_waves")
+      add_test(NAME rfr_reconcile_replay COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py" "$<TARGET_FILE:scan_wave>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
     endif()
   endif()
 endif()
@@ -257,60 +256,11 @@ if(LADDER_BUILD_PAPER_BENCHMARKS)
   endif()
 endif()
 
-if(NOT LADDER_BUILD_QUANTLIB STREQUAL "OFF")
-  find_package(QuantLib CONFIG QUIET)
-  if(TARGET QuantLib::QuantLib)
-    set(_quantlib QuantLib::QuantLib)
-  elseif(TARGET QuantLib)
-    set(_quantlib QuantLib)
-  else()
-    find_path(QUANTLIB_INCLUDE_DIR ql/quantlib.hpp)
-    find_library(QUANTLIB_LIBRARY NAMES QuantLib quantlib)
-    if(QUANTLIB_INCLUDE_DIR AND QUANTLIB_LIBRARY)
-      add_library(ladder_quantlib INTERFACE)
-      target_include_directories(ladder_quantlib INTERFACE "${QUANTLIB_INCLUDE_DIR}")
-      target_link_libraries(ladder_quantlib INTERFACE "${QUANTLIB_LIBRARY}")
-      set(_quantlib ladder_quantlib)
-    endif()
-  endif()
-  if(_quantlib)
-    ladder_example(ql_waves hagan_waves ql_waves.cpp)
-    ladder_example(ql_examples quantlib_reconcile ql_examples.cpp)
-    foreach(_target ql_waves ql_examples)
-      target_link_libraries(${_target} PRIVATE ${_quantlib})
-    endforeach()
-    ladder_example(scan_reconcile quantlib_reconcile scan_reconcile.cpp)
-    if(BUILD_TESTING)
-      find_package(Python3 COMPONENTS Interpreter QUIET)
-      if(Python3_Interpreter_FOUND)
-        add_test(NAME quantlib_quote_risk_reconciliation
-          COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/examples/quantlib_reconcile/quote_risk_check.py"
-            --directory "${CMAKE_BINARY_DIR}/examples/quantlib_reconcile"
-            --generate "$<TARGET_FILE:ql_examples>" "$<TARGET_FILE:scan_reconcile>")
-      endif()
-    endif()
-    message(STATUS "QuantLib found: reference generators enabled")
-  elseif(LADDER_BUILD_QUANTLIB STREQUAL "ON")
-    message(FATAL_ERROR "QuantLib C++ headers/library not found. Install QuantLib or use AUTO/OFF.")
-  else()
-    message(STATUS "QuantLib not found: reference generators skipped; recorded replay remains available")
-  endif()
-endif()
-
-
 # Readable demonstrator checks are small; no historical 500k timing is run here.
 if(BUILD_TESTING)
   add_executable(test_demo_support tests/test_demo_support.cpp)
   target_link_libraries(test_demo_support PRIVATE ladder)
   add_test(NAME demo_support COMMAND test_demo_support)
-  find_package(Python3 COMPONENTS Interpreter QUIET)
-  if(Python3_Interpreter_FOUND)
-    add_test(NAME quote_risk_checker_synthetic
-      COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_quote_risk_check.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/examples/quantlib_reconcile/quote_risk_check.py")
-  endif()
   if(TARGET aggregation)
     add_test(NAME aggregation_demo_smoke COMMAND aggregation 2000)
     add_test(NAME aggregation_demo_partial_book COMMAND aggregation 501)

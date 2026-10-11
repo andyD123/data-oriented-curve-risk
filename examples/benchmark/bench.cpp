@@ -1,7 +1,7 @@
 #include "../example_dir.hpp"
 #include "ladder/aligned_memory.hpp"
-// Two-curve bucketed-risk benchmark on the curves of QuantLib's MulticurveBootstrapping example
-// (node discount factors in quantlib_example_curves.txt, written by examples/quantlib_reconcile).
+// Two-curve bucketed-risk benchmark on the curves of the market multi-curve dataset
+// (node discount factors in market_example_curves.txt).
 //   BASE  bump-and-reprice: AoS instruments, virtual npv, central differences on every stencil of both curves
 //   SCAN  scalar reverse scan per instrument (ladder/scan.hpp) on unit cashflows
 //   GRP   eight instruments per vector, shared date table, streaming output (ladder/scan_simd.hpp)
@@ -30,7 +30,7 @@ struct Curve {                                             // log-linear on the 
     Curve bumped(int k, double delta) const { Curve c = *this; for (int j = k; j <= S.K(); ++j) c.logD[j] -= delta * S.len(k); return c; }   // box bump of stencil k
 };
 #ifndef LADDER_CURVE_DATA_FILE
-#define LADDER_CURVE_DATA_FILE "quantlib_example_curves.txt"
+#define LADDER_CURVE_DATA_FILE "market_example_curves.txt"
 #endif
 static void load_curves(const char* path, Curve& d, Curve& p) {
     std::ifstream in(path); int nc;

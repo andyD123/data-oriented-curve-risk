@@ -3,7 +3,7 @@
 //
 //   BASE  traditional bump-and-reprice: AoS instruments, virtual npv, 2K bumped OIS curves for all
 //         instruments plus 2K bumped projection curves for swaps, central differences.
-//   SCAN  scalar reverse scan per instrument (the kernel reconciled against QuantLib), own D(t) lookups.
+//   SCAN  scalar reverse scan per instrument, own D(t) lookups.
 //   GRP   instruments grouped 8-wide by schedule signature, shared D(t) over unique dates,
 //         AVX-512 via std::experimental::simd, one column walk per group, normal or streaming stores.
 //
@@ -76,7 +76,7 @@ static void check_rate_shift_units()
     }
 }
 
-// curves from the QuantLib MulticurveBootstrapping example (cashflows2.txt written by ql_examples.cpp)
+// curves from the market multi-curve dataset
 static void load_curves(const char* path, Curve& ois, Curve& proj) {
     FILE* in = std::fopen(path, "r"); int nc; std::fscanf(in, "%d", &nc);
     for (Curve* c : {&ois, &proj}) { char nm[16]; int n; std::fscanf(in, "%15s %d", nm, &n); c->B.resize(n); c->D.resize(n); c->logD.resize(n);
@@ -397,13 +397,13 @@ int main(int argc, char** argv)
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000;
     int run_base = argc > 2 ? std::atoi(argv[2]) : 1;
     int reps = argc > 3 ? std::atoi(argv[3]) : 3;
-    Curve ois, proj; load_curves("quantlib_example_curves.txt", ois, proj);
+    Curve ois, proj; load_curves("market_example_curves.txt", ois, proj);
     const int Ko = ois.K(), Kp = proj.K();
 
     std::vector<Signature> sigs;
     auto book = make_portfolio(N, sigs, 42);
     size_t ncf = 0; for (auto& b : book) { if (auto* x = dynamic_cast<Bond*>(b.get())) ncf += x->cfs.size(); else { auto* s = static_cast<Swap*>(b.get()); ncf += s->fixed.size() + s->flt.size(); } }
-    std::printf("N=%zu instruments, %zu signatures, %.1f cashflows/instrument, K=%d+%d (Eonia+Euribor6M nodes from the QuantLib example)\n", N, sigs.size(), (double)ncf / N, Ko, Kp);
+    std::printf("N=%zu instruments, %zu signatures, %.1f cashflows/instrument, K=%d+%d (Eonia+Euribor6M nodes from market dataset)\n", N, sigs.size(), (double)ncf / N, Ko, Kp);
 
     std::vector<double> out_ois_s(N * Ko), out_proj_s(N * Kp);
 

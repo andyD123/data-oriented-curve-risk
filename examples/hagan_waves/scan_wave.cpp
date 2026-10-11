@@ -1,5 +1,5 @@
 #include "../example_dir.hpp"
-// Replay first-order risk weights dumped by ql_waves. This is not a fresh QuantLib run.
+// Replay first-order risk weights. This is an immutable reference run.
 #include "ladder/scan.hpp"
 #include <fstream>
 #include <iomanip>

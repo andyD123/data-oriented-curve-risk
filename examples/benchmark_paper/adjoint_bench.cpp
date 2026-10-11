@@ -138,7 +138,7 @@ void print_results(std::size_t instruments, const demo::CurvePair& curves,
 
 int run_experiment(std::size_t count, int repetitions)
 {
-    const auto curves = demo::read_curves("quantlib_example_curves.txt");
+    const auto curves = demo::read_curves("market_example_curves.txt");
     const auto book = make_risk_records(count, curves);
     std::vector<double> scan(count * curves.wave_count());
     std::vector<double> direct(scan.size());

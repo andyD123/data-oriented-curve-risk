@@ -21,7 +21,7 @@ struct Options {
     std::size_t instruments = 100000;
     bool baseline = true;
     int repetitions = 3;
-    const char* curve_file = "quantlib_example_curves.txt";
+    const char* curve_file = "market_example_curves.txt";
     std::vector<int> capacities{16, 64, 128, 256, 1024, 4096};
     bool all_orders = false;
 };

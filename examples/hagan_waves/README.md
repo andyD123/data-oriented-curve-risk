@@ -1,8 +1,8 @@
-# Hagan box waves on the reverse scan — QuantLib example
+# Hagan box waves on the reverse scan — Reference Example
 
 Risk defined as Hagan's forward-curve box shifts (Hagan & West 2006/2008; Hagan, Wilmott 2015),
-computed by the reverse scan from unit cashflows, on QuantLib's **shipped** MulticurveBootstrapping
-curves with their **cubic** interpolation left unchanged. Reconciled against QuantLib's own wave
+computed by the reverse scan from unit cashflows, on the market multi-curve dataset
+with cubic interpolation left unchanged. Reconciled against reference wave
 bumps, then hedged against the example's par OIS and swaps.
 
 The point: the scan needs the bump to leak nothing outside its bucket. Box waves satisfy that by
@@ -13,35 +13,34 @@ wants.
 
 | file | what it does |
 |---|---|
-| `ql_waves.cpp` | QuantLib 1.33 C++: Eonia + Euribor6M curves from the shipped example (`PiecewiseYieldCurve<Discount, Cubic>`, quotes verbatim). The reconciliation population has eight instruments: the original seven used for the paper hedge plus `bond_35y_beyond_last_pillar`, which exercises Hagan's open final wave. Defines `BoxShifted`, writes wave risk by central difference, exports first-order dated weights and writes risk of 17 par hedge instruments. |
 | `scan_wave.cpp` | Geometry-only reverse scan: unit cashflows + bucket boundaries in, wave ladder out. No curve inside. |
-| `compare.py` | Scan vs QuantLib wave bumps per instrument; the residual must fall ~4× when ε halves. |
+| `compare.py` | Scan vs reference wave bumps per instrument; the residual must fall ~4× when ε halves. |
 | `hagan_hedge.py` | Hagan maturity-aligned hedge. Defaults to the named seven-instrument `paper7` population and uses explicit back-substitution; `--book extended8` includes the 35-year boundary-test bond. |
 | `hedge.py` | Older least-squares comparison on the full pillar-wave ladder; retained for comparison only. |
-| `run.sh` | Build (CMake or make), generate, scan and compare recorded wave risk. |
+| `run.sh` | Build (CMake or make), scan and compare recorded wave risk. |
 
-Requires QuantLib C++ (`apt install libquantlib0-dev` on Ubuntu 24.04 gives 1.33), GCC ≥ 13, numpy.
+Requires C++20 compiler, GCC ≥ 13, numpy.
 
-## The wave in QuantLib
+## The Box Wave Implementation
 
 ```cpp
-Real overlap(Time t) const {
-    const Real inside = std::max(t - t0_, 0.0);
-    return open_last_ ? inside : std::min(inside, t1_ - t0_);
+double overlap(double t, double t0, double t1, bool open_last) {
+    const double inside = std::max(t - t0, 0.0);
+    return open_last ? inside : std::min(inside, t1 - t0);
 }
 
-DiscountFactor discountImpl(Time t) const override {
-    return base_->discount(t, true) * std::exp(-delta_ * overlap(t));
+double shifted_discount(double base_df, double t, double delta, double t0, double t1, bool open_last) {
+    return base_df * std::exp(-delta * overlap(t, t0, t1, open_last));
 }
 ```
-Interior waves use the bounded policy. The final wave uses `open_last_ = true`, matching Hagan (2015,
-eq. 2.2b/2.3b). The actual implementation is in `ql_waves.cpp`; this excerpt only shows the terminal policy.
-Relink the handle the instruments price off; at-par coupon fixings on the projection curve follow automatically.
-Times are in the base curve's own basis (the Euribor curve's reference date is the settlement date).
+Interior waves use the bounded policy. The final wave uses `open_last = true`, matching Hagan (2015,
+eq. 2.2b/2.3b).
+Coupon fixings on the projection curve follow the shifted forwards.
+Times are in year fractions from the reference valuation date.
 
 ## Recorded results (this directory's `*.txt`)
 
-Scan vs QuantLib wave bumps on the shipped cubic curves:
+Scan vs reference wave bumps on the shipped cubic curves:
 
 | instrument | max rel (ε=1e-4) | max rel (ε=5e-5) | ε² ratio |
 |---|---|---|---|
@@ -66,7 +65,7 @@ by up to 15% with risk reported past the swap's maturity — see the main paper,
 
 ## Exactness: the finite difference converges to the scan
 
-Residual |QuantLib wave bump − scan| summed over the 66 waves, as the bump size halves (`wave_risk_<eps>.txt`):
+Residual |reference wave bump − scan| summed over the 66 waves, as the bump size halves (`wave_risk_<eps>.txt`):
 
 | instrument | ε=4e-4 | 2e-4 | 1e-4 | 5e-5 | 2.5e-5 | successive ratios |
 |---|---|---|---|---|---|---|
@@ -111,13 +110,13 @@ Hagan's last wave (2015, eq. 2.2b) extends flat beyond the final maturity; the l
 that convention (false = box of length ℓ_K). An earlier version of the scalar scan double-counted cashflows beyond
 B[K] (uncapped interior weight plus the ℓ_K tail) and no example reached that region; found in external review.
 Fixed in `ladder/scan.hpp` and `scan_simd.hpp`, with `tests/test_ladder.cpp` now covering both conventions against the
-direct overlap adjoint. Here `ql_waves` applies the open last wave in `BoxShifted` and the book includes
+direct overlap adjoint. The book includes
 `bond_35y_beyond_last_pillar` (35y 4% annual, beyond the Eonia curve's 30y pillar): finite-difference ratio 4.00,
 adjoint 1.6e-16 (`compare.py`, `aad_check.py`).
 
 ## Non-pillar reporting grid
 
 Hagan's risk grid is independent of the calibration grid. Put boundary times (years from today, first entry 0) in
-`risk_grid.txt` and `ql_waves` applies box waves on that grid to both curves, last wave open. With the annual grid in
+`risk_grid.txt` and apply box waves on that grid to both curves, last wave open. With the annual grid in
 `risk_grid_annual_example.txt` (0–10y): finite-difference ratios 3.97–4.01, adjoint agreement 1e-16 on all eight
 instruments. Remove the file to return to the pillar grid.

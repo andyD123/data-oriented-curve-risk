@@ -14,12 +14,12 @@ jobs:
           g++ --version | tee -a environment.txt
       - name: Default regression suite
         run: |
-          cmake -S . -B build-default -DCMAKE_BUILD_TYPE=Release -DLADDER_BUILD_QUANTLIB=OFF
+          cmake -S . -B build-default -DCMAKE_BUILD_TYPE=Release
           cmake --build build-default --parallel 2
           ctest --test-dir build-default --output-on-failure
       - name: Build AVX2 experiment
         run: |
-          cmake -S . -B build-avx2 -DCMAKE_BUILD_TYPE=Release             -DLADDER_LANES=AVX2 -DLADDER_BUILD_QUANTLIB=OFF             -DLADDER_BUILD_PAPER_BENCHMARKS=OFF -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON -DBUILD_TESTING=OFF
+          cmake -S . -B build-avx2 -DCMAKE_BUILD_TYPE=Release             -DLADDER_LANES=AVX2             -DLADDER_BUILD_PAPER_BENCHMARKS=OFF -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON -DBUILD_TESTING=OFF
           cmake --build build-avx2 --target wide_group_bench --parallel 2
       - name: Run AVX2 width sweep
         run: |
@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           if grep -qw avx512f /proc/cpuinfo; then
-            cmake -S . -B build-avx512 -DCMAKE_BUILD_TYPE=Release               -DLADDER_LANES=AVX512 -DLADDER_BUILD_QUANTLIB=OFF               -DLADDER_BUILD_PAPER_BENCHMARKS=OFF -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON -DBUILD_TESTING=OFF
+            cmake -S . -B build-avx512 -DCMAKE_BUILD_TYPE=Release               -DLADDER_LANES=AVX512               -DLADDER_BUILD_PAPER_BENCHMARKS=OFF -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON -DBUILD_TESTING=OFF
             cmake --build build-avx512 --target wide_group_bench --parallel 2
             ./build-avx512/examples/benchmark/wide_group_bench 65536 9 | tee wide-avx512.txt
           else
