@@ -1,7 +1,11 @@
 // Research-only: 100,000 fixed discounted cashflows, 66 forward-wave buckets.
 // Build: g++ -std=c++20 -O3 -march=native -DNDEBUG -I. \
 //   examples/benchmark/bench_cross_gamma_research.cpp -o bench_gamma
+<<<<<<< HEAD
 // Not the 500k-instrument paper benchmark.
+=======
+// Not a QuantLib test and not the 500k-instrument paper benchmark.
+>>>>>>> origin/main
 #include "ladder/cross_gamma.hpp"
 #include "ladder/scan.hpp"
 #include <algorithm>
@@ -36,6 +40,7 @@ static void direct(const Stencils& S,const std::vector<UnitCashflow>& cf,
     }
     for(int j=0;j<K;++j)for(int k=j+1;k<K;++k)H[k*K+j]=H[j*K+k];
 }
+<<<<<<< HEAD
 
 // Second-order AAD baseline: a generic scalar tape, forward-over-reverse Hessian (K Hessian-vector products).
 // Deliberately generous to the comparator: only non-zero overlaps are recorded, the tape is recorded once and reused
@@ -65,6 +70,8 @@ static void aad_hvp(AadTape& t,int root,int j,double* column){
             default: break; } }
     for(int k=0;k<K;++k) column[k]=t.adjdot[k];
 }
+=======
+>>>>>>> origin/main
 int main(){
     std::vector<double> B(K+1);
     for(int j=0;j<=K;++j)B[j]=j;
@@ -117,6 +124,7 @@ int main(){
     for(int i=0;i<K*K;++i)fd_rel=std::max(fd_rel,
       std::abs(H[i]-fd[i])/std::max({1.,std::abs(H[i]),std::abs(fd[i])}));
     sink=sink+fd[35*K+39]*1e-11;
+<<<<<<< HEAD
     // second-order AAD: record once, then K forward-over-reverse passes
     AadTape tape; tape.n.reserve(8000000);
     const auto aad_start=std::chrono::steady_clock::now();
@@ -138,11 +146,16 @@ int main(){
     double aad_rel=0;
     for(int i=0;i<K*K;++i)aad_rel=std::max(aad_rel,std::abs(H[i]-Haad[i])/std::max({1.,std::abs(H[i]),std::abs(Haad[i])}));
     sink=sink+Haad[35*K+39]*1e-11;
+=======
+>>>>>>> origin/main
     std::printf("N=%d K=%d seed=20261010 repricings=8713\n",N,K);
     std::printf("structured_ms=%.6f direct_analytic_ms=%.6f bump_precompute_ms=%.6f bump_reprice_ms=%.6f\n",
       fast_ms,analytic_ms,pre_ms,fd_ms);
     std::printf("analytic_speedup=%.2fx bump_speedup=%.2fx relative_error_analytic=%.9g relative_error_fd=%.9g witness=%.9g\n",
       analytic_ms/fast_ms,(pre_ms+fd_ms)/fast_ms,max_rel,fd_rel,sink);
+<<<<<<< HEAD
     std::printf("aad_tape_nodes=%zu aad_record_ms=%.3f aad_hessian_ms=%.3f (%d forward-over-reverse passes) aad_total_ms=%.3f aad_vs_structured=%.0fx relative_error_aad=%.3g\n",
       tape.n.size(),aad_record_ms,aad_hvp_ms,K,aad_record_ms+aad_hvp_ms,(aad_record_ms+aad_hvp_ms)/fast_ms,aad_rel);
+=======
+>>>>>>> origin/main
 }

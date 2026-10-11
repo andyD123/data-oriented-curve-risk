@@ -1,0 +1,75 @@
+name: Cross-gamma focused checks
+on:
+  pull_request:
+    paths:
+      - 'ladder/cross_gamma.hpp'
+      - 'ladder/scan_gamma_grouped.hpp'
+      - 'ladder/scan_grouped_reduce.hpp'
+      - 'ladder/scan_simd.hpp'
+      - 'tests/test_grouped_api.cpp'
+      - 'ladder/curve.hpp'
+      - 'tests/test_curve.cpp'
+      - 'examples/curve_intro/**'
+      - 'tests/test_grouped_reduce.cpp'
+      - 'tests/test_rfr_reconcile.py'
+      - 'examples/rfr_reconcile/**'
+      - 'examples/benchmark/bench_grouped_reduce.cpp'
+      - 'tests/test_gamma_grouped.cpp'
+      - 'examples/benchmark/bench_gamma_grouped.cpp'
+      - 'tests/test_cross_gamma.cpp'
+      - 'tests/test_cross_gamma_quantlib_archive.cpp'
+      - 'examples/cross_gamma/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/cross-gamma.yml'
+  workflow_dispatch:
+jobs:
+  quantlib-live:
+    name: Live QuantLib 1.43 OIS second-order reconciliation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install QuantLib Python 1.43
+        run: >
+          python -m pip install --disable-pip-version-check
+          --only-binary=:all: 'QuantLib==1.43'
+      - name: Reprice standard, stress and interior-bucket OIS gamma
+        run: python examples/cross_gamma/quantlib/live_ois_cross_gamma.py --scenario all
+  regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portable cross-gamma and reader example
+        run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF -DLADDER_BUILD_GAMMA_BENCHMARK=ON -DLADDER_BUILD_REDUCE_BENCHMARK=ON
+      - name: Build targeted gamma and example executables
+        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive test_gamma_grouped test_grouped_reduce test_grouped_api test_curve cross_gamma_example curve_intro scan_rfr bench_gamma_grouped bench_grouped_reduce --parallel 2
+      - name: Smoke-check opt-in gamma benchmark on 2000 mixed instruments
+        run: ./build-cross-gamma/examples/benchmark/bench_gamma_grouped 2000 1 ./examples/benchmark/quantlib_example_curves.txt
+      - name: Smoke-check 2000-instrument portfolio-only grouped reduction
+        run: ./build-cross-gamma/examples/benchmark/bench_grouped_reduce 2000 1 ./examples/benchmark/quantlib_example_curves.txt
+      - name: Check fixed, QuantLib-archive, worked-example and offline algebra
+        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|grouped_reduce|grouped_api|rfr_reconcile|curve)'
+  full-repository:
+    name: Full existing suite (${{ matrix.backend }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [PORTABLE, AVX2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure full repository (skip optional QuantLib/paper benchmarks)
+        run: >
+          cmake -S . -B build-full -DCMAKE_BUILD_TYPE=Release
+          -DLADDER_LANES=${{ matrix.backend }}
+          -DLADDER_BUILD_EXAMPLES=ON
+          -DLADDER_BUILD_QUANTLIB=OFF
+          -DLADDER_BUILD_PAPER_BENCHMARKS=OFF
+          -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=OFF
+      - name: Build every standard test and example
+        run: cmake --build build-full --parallel 2
+      - name: Run complete CTest suite, including existing risk regressions
+        run: ctest --test-dir build-full --output-on-failure --parallel 2

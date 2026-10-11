@@ -17,6 +17,10 @@ option(LADDER_NATIVE_ARCH "Generate code for this build host (not a portable bin
 option(LADDER_BUILD_EXAMPLES "Build library, aggregation and wave replay examples" ON)
 option(LADDER_BUILD_WIDE_GROUP_EXPERIMENT "Build experimental variable-width schedule-group benchmark" OFF)
 option(LADDER_BUILD_GAMMA_BENCHMARK "Build optional 500k grouped gamma benchmark" OFF)
+<<<<<<< HEAD
+=======
+option(LADDER_BUILD_REDUCE_BENCHMARK "Build optional portfolio-first-order reduction benchmark" OFF)
+>>>>>>> origin/main
 option(LADDER_DUAL_ISA "Build the vectorised tests and benchmarks twice, as _avx2 and _avx512 targets (x86)" OFF)
 
 add_library(ladder INTERFACE)
@@ -120,9 +124,27 @@ if(BUILD_TESTING)
   add_executable(test_cross_gamma tests/test_cross_gamma.cpp)
   target_link_libraries(test_cross_gamma PRIVATE ladder)
   add_test(NAME cross_gamma COMMAND test_cross_gamma)
+<<<<<<< HEAD
   add_executable(test_gamma_grouped tests/test_gamma_grouped.cpp)
   target_link_libraries(test_gamma_grouped PRIVATE ladder)
   add_test(NAME gamma_grouped COMMAND test_gamma_grouped)
+=======
+  add_executable(test_cross_gamma_quantlib_archive tests/test_cross_gamma_quantlib_archive.cpp)
+  target_link_libraries(test_cross_gamma_quantlib_archive PRIVATE ladder)
+  add_test(NAME cross_gamma_quantlib_archive COMMAND test_cross_gamma_quantlib_archive)
+  add_executable(test_gamma_grouped tests/test_gamma_grouped.cpp)
+  target_link_libraries(test_gamma_grouped PRIVATE ladder)
+  add_test(NAME gamma_grouped COMMAND test_gamma_grouped)
+  add_executable(test_grouped_reduce tests/test_grouped_reduce.cpp)
+  target_link_libraries(test_grouped_reduce PRIVATE ladder)
+  add_test(NAME grouped_reduce COMMAND test_grouped_reduce)
+  add_executable(test_grouped_api tests/test_grouped_api.cpp)
+  target_link_libraries(test_grouped_api PRIVATE ladder)
+  add_test(NAME grouped_api COMMAND test_grouped_api)
+  add_executable(test_curve tests/test_curve.cpp)
+  target_link_libraries(test_curve PRIVATE ladder)
+  add_test(NAME curve COMMAND test_curve)
+>>>>>>> origin/main
   if(LADDER_DUAL_ISA)
     foreach(_lc avx2 avx512)
       foreach(_t ladder boundaries)
@@ -169,6 +191,7 @@ if(LADDER_BUILD_EXAMPLES)
     set(_bench_for_tests bench_library)
   endif()
   ladder_example(aggregation aggregation agg.cpp)
+<<<<<<< HEAD
   ladder_example(cross_gamma_example cross_gamma cross_gamma_example.cpp)
   if(LADDER_BUILD_GAMMA_BENCHMARK)
     ladder_example(bench_gamma_grouped benchmark bench_gamma_grouped.cpp)
@@ -178,6 +201,35 @@ if(LADDER_BUILD_EXAMPLES)
     add_test(NAME cross_gamma_example_smoke COMMAND cross_gamma_example)
   endif()
   ladder_example(scan_wave rfr_reconcile scan_wave.cpp)
+=======
+  ladder_example(scan_wave hagan_waves scan_wave.cpp)
+  ladder_example(curve_intro curve_intro curve_intro.cpp)
+  # Preserve Hagan/QuantLib replay; add the independent RFR demonstration.
+  ladder_example(scan_rfr rfr_reconcile scan_wave.cpp)
+  ladder_example(cross_gamma_example cross_gamma cross_gamma_example.cpp)
+  if(LADDER_BUILD_REDUCE_BENCHMARK)
+    ladder_example(bench_grouped_reduce benchmark bench_grouped_reduce.cpp)
+  endif()
+  if(LADDER_BUILD_GAMMA_BENCHMARK)
+    ladder_example(bench_gamma_grouped benchmark bench_gamma_grouped.cpp)
+  endif()
+  if(BUILD_TESTING)
+    add_test(NAME curve_intro_smoke COMMAND curve_intro)
+    add_test(NAME cross_gamma_example_smoke COMMAND cross_gamma_example)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+      add_test(NAME rfr_reconcile_replay
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py"
+          "$<TARGET_FILE:scan_rfr>"
+          "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
+      add_test(NAME cross_gamma_quantlib_offline
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/examples/cross_gamma/quantlib/live_ois_cross_gamma.py"
+          --scenario offline)
+    endif()
+  endif()
+>>>>>>> origin/main
   if(LADDER_BUILD_WIDE_GROUP_EXPERIMENT)
     ladder_example(wide_group_bench benchmark wide_group_bench.cpp)
   endif()
