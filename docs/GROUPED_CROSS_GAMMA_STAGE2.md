@@ -3,7 +3,7 @@
 ## Implementation
 
 The [eight-lane gamma header](../ladder/scan_gamma_grouped.hpp) uses
-the [grouped data model](GROUPED_DATA_FLOW.md), SIMD primitives and
+the grouped data model, SIMD primitives and
 refreshed DateTable. Gamma remains a separate optional pass and does
 not add work to the first-order scan.
 
@@ -107,7 +107,7 @@ The view borrows the layout, stencils and two output buffers.
 Checked spans validate their lengths but **do not acquire ownership**.
 All inputs must remain alive and refer to the same curve snapshot.
 Do not refresh/overwrite while reading, or share mutable scratch between
-concurrent callers. See the [grouped ownership guide](GROUPED_DATA_FLOW.md).
+concurrent callers.
 
 No extra gamma work is performed by the original first-order scan.
 This stage is an opt-in CPU implementation; full multi-curve second-order
