@@ -188,8 +188,10 @@ See [quantlib/README.md](quantlib/README.md) for two distinct methods.
    and prepares a **live** second-order finite-difference reconciliation.
    The authoring environment lacked QuantLib, but an independent
    cloud Linux run on **11 October 2026** used **QuantLib Python 1.43**.
-   Both standard and stressed payment-lag scenarios passed live four-price
-   mixed-gamma finite differences. The externally supplied numerical
+   Standard, stressed, and now an **interior-bucket** OIS case passed live
+   QuantLib 1.43 finite differences. The third case independently validates
+   the nonzero diagonal lag correction and all 15 unique elements of its
+   5x5 Hessian. The externally supplied numerical
    evidence is transcribed in
    [the validation record](../../docs/QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
    This validates the specific fully forecast, same-curve model and selected
