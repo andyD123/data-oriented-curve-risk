@@ -81,6 +81,36 @@ This is an **aggregated fixed-cashflow** Hessian on this hardware,
 not a best-in-class AAD, general QuantLib Hessian, production
 500,000-instrument mixed-book, or per-instrument dense-Hessian comparison.
 
+## GitHub Actions: new interior-wave diagonal check
+
+Unlike the two earlier **externally supplied** test results recorded
+above, the following additional check was executed in GitHub Actions on
+the feature branch, using **QuantLib Python 1.43** and the *actual*
+QuantLib OvernightIndexedCoupon:
+
+[Successful job: run 38100830063](https://github.com/andyD123/data-oriented-curve-risk/actions/runs/38100830063).
+
+The new coupon accrued from 4 January to 6 April 2027, and paid
+16 April 2027 (8-business-day lag). Its wave grid includes a bucket
+straddling the 6 April accrual end, so the lag correction contributes
+to diagonal as well as off-diagonal gamma.
+
+| Interior wave 3: diagonal gamma | Value |
+|---|---:|
+| Frozen dated-weight result | -461.423463272 |
+| Correct rank-two lag term | -833.219334204 |
+| **Analytic corrected diagonal** | **-1294.642797476** |
+| Live QuantLib FD, h=0.002 | -1294.642783250 |
+
+The *same* live job checked all **15 unique entries of the 5x5
+Hessian** against independent finite-difference QuantLib coupon
+repricing, and all passed. The standard and 93-calendar-day stressed
+cases also passed unchanged.
+
+The additional convergence test now uses wider diagonal-bump steps,
+rather than requiring monotonic convergence below the floating-point
+cancellation floor.
+
 ## Limitations / future validation
 
 The live reconciliation supports ONE selected off-diagonal pair
