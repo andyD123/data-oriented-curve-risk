@@ -204,13 +204,16 @@ def run_live(name: str) -> None:
         print(f"  interior wave={j+1}: frozen Hjj={frozen_diagonal:+.9f},"
               f" correction={diagonal_correction:+.9f},"
               f" corrected Hjj={exact_diagonal:+.9f}")
+        # Use wider steps for this *truncation-order* check. At h=0.002,
+        # QL double precision cancellation dominates the O(h^2) remainder,
+        # making a monotonic step-ratio test statistically meaningless.
         previous_error = None
-        for eps in (0.008, 0.004, 0.002):
+        for eps in (0.16, 0.08, 0.04, 0.02):
             observed = (repriced(j,eps)-2.0*price0+repriced(j,-eps))/(eps*eps)
             assert_near(f"diagonal gamma h={eps}",observed,exact_diagonal,
-                        atol=0.10,rtol=2e-5)
+                        atol=0.015,rtol=2e-6)
             err = abs(observed-exact_diagonal)
-            if previous_error is not None and err > 0.48*previous_error+0.01:
+            if previous_error is not None and err > 0.40*previous_error+0.00005:
                 raise AssertionError("interior diagonal FD not converging quadratically")
             previous_error = err
 
