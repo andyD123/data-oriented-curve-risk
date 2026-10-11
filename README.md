@@ -28,8 +28,9 @@ ISA selection (AVX2, AVX-512, portable), presets, Windows and CLion notes: [docs
 ## Optional: cross-gamma
 
 An opt-in second-order layer (full Hessian, diagonal gamma, OIS lag correction, matrix-free
-Hessian-vector product) built on the same ladder. On a 100,000-cashflow, 66-bucket book it is about 80-90x
-faster than a direct analytic Hessian and about 5,000x faster than central bump-and-reprice (one aggregated
+Hessian-vector product) built on the same ladder. On a 100,000-cashflow, 66-bucket book it is about 36-43x
+faster than a direct analytic Hessian, about 5,000x faster than central bump-and-reprice and about 10,000x faster than a plain
+taped second-order AAD prototype (one aggregated
 66 x 66 Hessian, this machine; caveats in [docs/CROSS_GAMMA.md](docs/CROSS_GAMMA.md)).
 
 ## Scope and limitations
@@ -39,7 +40,7 @@ faster than a direct analytic Hessian and about 5,000x faster than central bump-
 - Results are analytic first derivatives per unit forward shift, not finite-shock P&L.
 - Tested on Linux x86-64 with GCC and Clang. Windows/MSVC and Apple/ARM were not run.
 - Benchmark figures are single-threaded; see [BENCHMARKS.md](BENCHMARKS.md).
-- The reference reconciliation covers single-curve instruments only; the projection pass and cross-curve Jacobian block are not reconciled.
+- The reference reconciliation covers single-curve instruments; the projection pass is checked separately on term-rate swaps (`rfr_projection_check.py`, wave ladders only). The cross-curve calibration Jacobian block is not reconciled.
 - Groups own separate small vectors rather than viewing one flat arena; the effect of an arena was not measured.
 - Results on third-party data (for example the Bank of England curve) are kept local and are not published here.
 

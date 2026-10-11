@@ -42,6 +42,7 @@ struct Group {
 
 struct GroupLayout {
     std::vector<Group> groups;
+    std::unordered_map<int, std::vector<int>> sig_groups;   // signature -> indices of its groups (for incremental insert)
     DateTable table;
     double days_per_year = 365.0;
     bool refreshed = false;
@@ -112,6 +113,7 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
             for (int d : dset) days.push_back(d);
             for (auto& f : G.f_di) { days.push_back(f[1]); days.push_back(f[2]); }
             col_day.push_back(dset);
+            L.sig_groups[s].push_back((int)L.groups.size());
             L.groups.push_back(std::move(G));
         }
     }
@@ -146,6 +148,84 @@ inline void refresh_table(GroupLayout& L, const Stencils& Sd, const Stencils& Sp
     }
     L.discount_grid = Sd.B; L.projection_grid = Sp.B;
     L.refreshed = true;
+}
+
+// ---- incremental insert -------------------------------------------------------------------------------------------
+// Adds one instrument to an existing layout without rebuilding it. Two cheap paths and one refusal:
+//   free_lane       a group with the same signature has a free lane and already holds every column / coupon key the new
+//                   instrument needs: its amounts are written into that lane
+//   new_group       otherwise a single-instrument group is built; all its dates must already be in the shared date table
+//   rebuild_needed  a payment date is not in the date table (the table, and every group's table indices, would shift),
+//                   or the input is invalid; nothing is changed
+// The date table is untouched, so refreshed values stay valid. The caller owns the output buffer and must make it
+// large enough for L.groups.size() groups after a new_group result.
+enum class InsertResult { free_lane, new_group, rebuild_needed };
+
+namespace detail {
+template <class Key>
+inline int find_key(const std::vector<Key>& keys, const Key& k) {
+    auto it = std::lower_bound(keys.begin(), keys.end(), k);
+    return (it != keys.end() && *it == k) ? (int)(it - keys.begin()) : -1;
+}
+inline int table_index(const DateTable& T, int day) {
+    auto it = std::lower_bound(T.day.begin(), T.day.end(), day);
+    return (it != T.day.end() && *it == day) ? (int)(it - T.day.begin()) : -1;
+}
+} // namespace detail
+
+inline InsertResult insert_instrument(GroupLayout& L, const InstrumentSpec& in, int instrument_id)
+{
+    for (const auto& c : in.fixed) if (!std::isfinite(c.amount)) return InsertResult::rebuild_needed;
+    for (const auto& c : in.flt) if (!std::isfinite(c.scale) || c.a_day > c.b_day) return InsertResult::rebuild_needed;
+    for (const auto& c : in.ois) if (!std::isfinite(c.N) || c.a_day > c.b_day) return InsertResult::rebuild_needed;
+    const DateTable& T = L.table;
+    // every date must already be in the table
+    auto known = [&](int d) { return detail::table_index(T, d) >= 0; };
+    for (const auto& c : in.fixed) if (!known(c.day)) return InsertResult::rebuild_needed;
+    for (const auto& f : in.flt) if (!known(f.pay_day) || !known(f.a_day) || !known(f.b_day)) return InsertResult::rebuild_needed;
+    for (const auto& o : in.ois) if (!known(o.pay_day) || !known(o.a_day) || !known(o.b_day)) return InsertResult::rebuild_needed;
+
+    // fast path: a group of the same signature with a free lane and all columns / keys present
+    auto sg = L.sig_groups.find(in.signature);
+    if (sg != L.sig_groups.end()) {
+        for (int gi : sg->second) {
+            Group& G = L.groups[gi];
+            if (G.n_valid >= LANES) continue;
+            std::vector<int> fcol(in.fixed.size()), fq(in.flt.size()), oq(in.ois.size());
+            bool fits = true;
+            for (size_t j = 0; j < in.fixed.size() && fits; ++j) {       // col_di ascending by table index
+                int ti = detail::table_index(T, in.fixed[j].day);
+                auto it = std::lower_bound(G.col_di.begin(), G.col_di.end(), ti);
+                if (it == G.col_di.end() || *it != ti) fits = false; else fcol[j] = (int)(it - G.col_di.begin());
+            }
+            for (size_t j = 0; j < in.flt.size() && fits; ++j) {
+                std::array<int,3> k{detail::table_index(T, in.flt[j].pay_day), detail::table_index(T, in.flt[j].a_day), detail::table_index(T, in.flt[j].b_day)};
+                fq[j] = detail::find_key(G.f_di, k); if (fq[j] < 0) fits = false;
+            }
+            for (size_t j = 0; j < in.ois.size() && fits; ++j) {
+                std::array<int,3> k{detail::table_index(T, in.ois[j].pay_day), detail::table_index(T, in.ois[j].a_day), detail::table_index(T, in.ois[j].b_day)};
+                oq[j] = detail::find_key(G.o_di, k); if (oq[j] < 0) fits = false;
+            }
+            if (!fits) continue;
+            const int l = G.n_valid++;
+            G.inst[l] = instrument_id;
+            for (size_t j = 0; j < in.fixed.size(); ++j) G.col_amt[fcol[j]].v[l] += in.fixed[j].amount;
+            for (size_t j = 0; j < in.flt.size(); ++j) G.f_scale[fq[j]].v[l] += in.flt[j].scale;
+            for (size_t j = 0; j < in.ois.size(); ++j) G.o_N[oq[j]].v[l] += in.ois[j].N;
+            return InsertResult::free_lane;
+        }
+    }
+    // new single-instrument group: build it on its own, then map its date indices into the shared table
+    GroupLayout one = build_layout(std::vector<InstrumentSpec>{in}, L.days_per_year);
+    Group G = std::move(one.groups.front());
+    G.inst[0] = instrument_id;
+    auto remap = [&](int idx) { return detail::table_index(T, one.table.day[idx]); };
+    for (int& d : G.col_di) d = remap(d);
+    for (auto& f : G.f_di) for (int& d : f) d = remap(d);
+    for (auto& o : G.o_di) for (int& d : o) d = remap(d);
+    L.sig_groups[in.signature].push_back((int)L.groups.size());
+    L.groups.push_back(std::move(G));
+    return InsertResult::new_group;
 }
 
 } // namespace ladder

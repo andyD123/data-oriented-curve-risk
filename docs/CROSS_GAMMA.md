@@ -39,13 +39,23 @@ methods produce the same output; cashflow sorting excluded from every timing):
 3. central bump-and-reprice: 8,713 revaluations (1 + 2*66 diagonal + 4*2,145 pairwise), with all overlaps
    cached to favour the comparator; the price loop is amounts and exponentials only.
 
-Measured here (Intel i7-12700K, GCC 13.3, one thread, four runs of the same binary):
+4. second-order AAD baseline: a generic scalar tape (scale, add, exp nodes) recorded once, then one
+   forward-over-reverse pass per direction, 66 Hessian-vector products. Only non-zero overlaps are recorded,
+   the tape is reused and nothing is allocated in the timed loop. A plain tape, not a tuned AAD library.
+
+Measured here (Intel i7-12700K, GCC 13.3, native-architecture build, one thread pinned to one CPU, three runs;
+raw output in `benchmarks/results/2026-10-11_i7-12700K_pinned/bench_cross_gamma_3runs.txt`):
 
 | Method | Time |
 |---|---:|
-| Reduced form | about 0.45 ms |
-| Direct analytic Hessian | about 38 ms (81-89x slower) |
-| Central bump-and-reprice | about 2.3 s (4,900-5,260x slower) |
+| Reduced form | 0.48-0.52 ms |
+| Direct analytic Hessian | 17-21 ms (36-43x slower) |
+| Central bump-and-reprice | 2.5-2.6 s (5,040-5,380x slower, including 23-29 ms to precompute overlaps) |
+| Taped second-order AAD (7.0M tape nodes) | 4.5-5.8 s (9,190-11,160x slower), agrees to 4.5e-15 |
+
+The earlier figures (0.45 ms, 38 ms, 2.3 s; 81-89x for the direct analytic Hessian) came from an earlier run
+and are superseded; the direct analytic loop is faster in this native-architecture build and was not
+compared like for like with the earlier build.
 
 Relative error: reduced form vs direct analytic 1.7e-14; finite difference vs reduced form 1.5e-6
 (truncation and cancellation, as expected for second differences).
@@ -60,8 +70,9 @@ machine), with 59,820 oracle checks at 5.6e-12. It has no bump baseline, so it i
 - The speedup is algorithmic, not SIMD. It is a single aggregated portfolio Hessian. A per-instrument
   66 x 66 output for 500,000 instruments is 17.4 GB of doubles and would be traffic-bound whatever the
   formula.
-- The direct analytic and bump baselines are deliberately simple. A well-optimised AAD implementation
-  can be closer than conventional bump-and-reprice.
+- The direct analytic and bump baselines are deliberately simple. The taped AAD row is a plain tape and is
+  slower than the bump baseline; a tuned implementation would be faster. No claim is made about a tuned
+  AAD library, and the O(NK^2) direct analytic Hessian is the natural point of comparison for one.
 - Scope: fixed flows on one curve plus the lagged-OIS correction. General nonlinear products and
   stochastic convexity are not covered.
 - These timings are not comparable with the 500,000-instrument first-order headline (different machine,

@@ -184,6 +184,7 @@ if(LADDER_BUILD_EXAMPLES)
   # scenario_bench (LRU date cache) needs no <experimental/simd>; under dual ISA it is built with the AVX-512 variant.
   ladder_example(adjoint_bench benchmark_paper adjoint_bench.cpp)
   ladder_example(write_floor benchmark_paper write_floor.cpp)
+  ladder_example(copy_floor benchmark_paper copy_floor.cpp)
   if(NOT LADDER_DUAL_ISA)
     ladder_example(scenario_bench benchmark_paper scenario_bench.cpp)
   endif()
@@ -210,6 +211,9 @@ if(LADDER_BUILD_EXAMPLES)
         "$<TARGET_FILE:${_bench_for_tests}>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
       add_test(NAME rfr_reconcile_replay COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py" "$<TARGET_FILE:scan_wave>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
+      add_test(NAME rfr_projection_replay COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_projection.py" "$<TARGET_FILE:scan_wave>"
         "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
     endif()
   endif()

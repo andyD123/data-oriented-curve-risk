@@ -95,3 +95,39 @@ Memory: 53 MB flat against an estimated 581 MB for the maps (node-size estimate,
 - Timings are wall clock, best of several runs, on an unpinned desktop. They are not statistical evidence.
 - No AVX-512 machine was available. AVX-512 results, when measured, should be added as a separate result directory.
 - See [docs/PAPER_EVIDENCE.md](docs/PAPER_EVIDENCE.md) for the claim-to-command mapping.
+
+## Pinned re-measurement, ablation and extras (11 October 2026)
+
+Raw output: `benchmarks/results/2026-10-11_i7-12700K_pinned/` (driver `benchmarks/run_pinned_campaign.sh`, summary
+`summary.txt`). Same machine; single-thread runs pinned with `taskset` to logical CPU 2. These are a different run
+from the table above and are not mixed with it.
+
+| Layer (500,000 instruments, median of 3 runs, best of 3 inside each) | Time | ns / sensitivity | vs BASE |
+|---|---:|---:|---:|
+| BASE bump-and-reprice, object model with virtual `npv` | 23,570 ms | 714 | 1x |
+| SOA same bumps, flat arrays, no virtual calls | 22,665 ms | 687 | 1.04x |
+| TABLE as SOA plus shared date table | 2,086 ms | 63.2 | 11x |
+| SCAN scalar reverse scan incl. replication | 454 ms | 13.8 | 52x |
+| GRP eight AVX2 lanes, normal stores (kernel) | 52.0 ms | 1.58 | 453x |
+| GRP streaming stores (table refresh + kernel) | 37.8 ms | 1.14 | 624x |
+
+**Variation.** The 31.5 ms headline above is a favourable best-of-3 from an unpinned run. Pinned to CPU 2 the
+best-of-3 inside three full runs was 34.1-39.4 ms. The best of seven repetitions across six logical CPUs ranged
+from 30.3 ms (CPUs 6, 8) to 37.2 ms (CPU 0), so the speedup over BASE lies between roughly 620x and 780x. Fifteen
+independent single-repetition processes also pay the first touch of the output pages and gave a median of 42.1 ms
+(36.4-51.8); their normal-store figures (median 118 ms) are dominated by first touch and should not be used.
+
+**Same-CPU reference ratios.** Kernel 30.3-37.2 ms against write-only 7.3-8.5 ms: 4.0-4.7x. Against a plain
+`memcpy` of the same 273.5 MB (`copy_floor`, best of 15, 17.8-20.2 ms): 1.7-1.8x. Both references were measured
+on the same CPU as the kernel.
+
+**Threads** (groups split into contiguous ranges, unpinned, best of 15; 6 cores, 12 threads): 1: 31.8 ms,
+2: 32.2, 4: 18.4, 6: 21.8, 8: 18.4, 12: 18.0. Scaling stops near 1.8x at about 15 GB/s written; not diagnosed.
+
+**One instrument per group** (`LADDER_UNIQUE_SIG=1`, 500,000 groups, 12.5% occupancy, 2.1 GB padded output):
+kernel 253 ms (7.7 ns/output), layout build 2.5 s.
+
+**Incremental insert** (`LADDER_INSERT=20000`): 14,651 inserts into a free lane at 4.8 us, 5,349 new
+single-instrument groups at 16.0 us, none refused; 156 ms in total against 896 ms to rebuild the 520,000-instrument
+layout (about 115,000 inserts). All ladders agree with the scalar scan to 3.6e-15. A date outside the date table
+needs a rebuild; new groups hold one instrument, so occupancy degrades; deletion is not implemented.

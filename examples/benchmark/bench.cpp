@@ -16,6 +16,8 @@
 #include <memory>
 #include <random>
 #include <vector>
+#include <thread>
+#include <algorithm>
 #include "ladder/stencil.hpp"
 #include "ladder/scan.hpp"
 #include "ladder/replicate.hpp"
@@ -124,7 +126,7 @@ int main(int argc, char** argv) try
         int y = years_d(rng), ty = type_d(rng); int rem = 1 + (int)(rng() % y); int maturity = mat_off(rng) + (int)std::lround(y * 365.25);
         double notional = notionals[rng() % 4], r = rate_d(rng);
         auto day = [&](int n_from_end, int per_year){ return maturity - (int)std::lround(n_from_end * 365.25 / per_year); };
-        InstrumentSpec& in = book[i]; in.signature = ty * 100000 + maturity;
+        InstrumentSpec& in = book[i]; in.signature = std::getenv("LADDER_UNIQUE_SIG") ? (int)i : ty * 100000 + maturity;   // LADDER_UNIQUE_SIG: one instrument per group (worst case)
         if (ty == 0) { auto b = std::make_unique<Bond>(); for (int j = 2*rem - 1; j >= 0; --j) in.fixed.push_back({day(j, 2), notional * r / 2 + (j == 0 ? notional : 0.0)}); b->cfs = in.fixed; aos.push_back(std::move(b)); }
         else { auto sw = std::make_unique<Swap>();
             for (int j = rem - 1; j >= 0; --j) in.fixed.push_back({day(j, 1) + (ty == 2 ? 2 : 0), -notional * r});
@@ -162,6 +164,21 @@ int main(int argc, char** argv) try
     double* out = (double*)ladder::allocate_aligned(L.groups.size() * L.stride(Kd, Kp) * sizeof(double));
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::normal>(L, cd.S, cp.S, out); best_n = std::min(best_n, now_ms() - t0); }
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::streaming>(L, cd.S, cp.S, out); best_s = std::min(best_s, now_ms() - t0); }
+    if (const char* env = std::getenv("LADDER_THREADS")) {   // e.g. LADDER_THREADS=1,2,4,8: split groups across threads
+        std::printf("\nthread scaling (streaming kernel, groups split into equal contiguous ranges, best of %d)\n", reps);
+        std::string list(env); size_t pos = 0;
+        while (pos < list.size()) {
+            size_t comma = list.find(',', pos); if (comma == std::string::npos) comma = list.size();
+            int nt = std::max(1, std::atoi(list.substr(pos, comma - pos).c_str())); pos = comma + 1;
+            double best = 1e30;
+            for (int r = 0; r < reps; ++r) {
+                t0 = now_ms(); std::vector<std::thread> pool; size_t G = L.groups.size();
+                for (int t = 0; t < nt; ++t) pool.emplace_back([&, t]{ scan_grouped<Store::streaming>(L, cd.S, cp.S, out, G * t / nt, G * (t + 1) / nt); });
+                for (auto& th : pool) th.join();
+                best = std::min(best, now_ms() - t0); }
+            std::printf("  %2d thread%s  %9.2f ms  %7.3f ns per output  %5.2f GB/s written\n", nt, nt == 1 ? " " : "s", best, best * 1e6 / nout, (double)L.groups.size() * L.stride(Kd, Kp) * 8 / best / 1e6);
+        }
+    }
     double worst = 0; std::vector<double> buf(Kd + Kp);
     for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) { int i = L.groups[gi].inst[l]; gather(L, Kd, Kp, out, (int)gi, l, buf.data());
         double scale = 1.0; for (int k = 0; k < Kd; ++k) scale = std::max(scale, std::fabs(sd[i*Kd+k])); for (int k = 0; k < Kp; ++k) scale = std::max(scale, std::fabs(sp[i*Kp+k]));
@@ -170,6 +187,62 @@ int main(int argc, char** argv) try
     for (double v : sp) valid = valid && std::isfinite(v);
     for (size_t j=0; j<L.groups.size()*L.stride(Kd,Kp); ++j) valid = valid && std::isfinite(out[j]);
     valid = valid && std::isfinite(worst) && worst < 1e-9;
+
+    // ---- incremental insert (LADDER_INSERT=M): add M new instruments to a copy of the layout without a rebuild
+    size_t ins_total = 0; double ins_ms = 0, ins_rebuild_ms = 0, ins_worst = 0; size_t ins_cat[3] = {0, 0, 0}; double ins_cat_ms[3] = {0, 0, 0};
+    if (const char* env = std::getenv("LADDER_INSERT")) {
+        const size_t M = (size_t)std::max(1, std::atoi(env));
+        std::mt19937_64 r2(777); std::uniform_int_distribution<int> mo(2, 61), yd(1, 29), td(0, 2); std::uniform_real_distribution<double> rt(0.01, 0.06);
+        std::vector<InstrumentSpec> extra(M);
+        for (size_t i = 0; i < M; ++i) {                              // same generator as the book, other seed
+            int y = yd(r2), ty = td(r2); int rem = 1 + (int)(r2() % y); int maturity = mo(r2) + (int)std::lround(y * 365.25);
+            double notional = notionals[r2() % 4], r = rt(r2);
+            auto day = [&](int n_from_end, int per_year){ return maturity - (int)std::lround(n_from_end * 365.25 / per_year); };
+            InstrumentSpec& in = extra[i]; in.signature = ty * 100000 + maturity;
+            if (ty == 0) { for (int j = 2*rem - 1; j >= 0; --j) in.fixed.push_back({day(j, 2), notional * r / 2 + (j == 0 ? notional : 0.0)}); }
+            else { for (int j = rem - 1; j >= 0; --j) in.fixed.push_back({day(j, 1) + (ty == 2 ? 2 : 0), -notional * r});
+                if (ty == 1) for (int j = 2*rem - 1; j >= 0; --j) in.flt.push_back({day(j, 2), day(j + 1, 2), day(j, 2), notional});
+                else for (int j = rem - 1; j >= 0; --j) in.ois.push_back({day(j, 1) + 2, day(j + 1, 1), day(j, 1), notional}); }
+        }
+        GroupLayout L2 = L;                                           // copy outside the timing
+        std::vector<int> cat(M);
+        double t_all = now_ms();
+        for (size_t i = 0; i < M; ++i) { double a = now_ms(); InsertResult res = insert_instrument(L2, extra[i], (int)(N + i)); double b = now_ms() - a;
+            int c = res == InsertResult::free_lane ? 0 : res == InsertResult::new_group ? 1 : 2; cat[i] = c; ++ins_cat[c]; ins_cat_ms[c] += b; }
+        ins_ms = now_ms() - t_all; ins_total = M;
+        std::vector<InstrumentSpec> combined = book; combined.insert(combined.end(), extra.begin(), extra.end());
+        t0 = now_ms(); GroupLayout L3 = build_layout(combined, DPY); ins_rebuild_ms = now_ms() - t0;
+        // correctness: grouped ladder of every inserted instrument against the scalar scan
+        double* out2 = (double*)ladder::allocate_aligned(L2.groups.size() * L2.stride(Kd, Kp) * sizeof(double));
+        scan_grouped<Store::normal>(L2, cd.S, cp.S, out2);
+        std::vector<double> got(Kd + Kp), ref(Kd + Kp);
+        for (size_t gi = 0; gi < L2.groups.size(); ++gi) for (int l = 0; l < L2.groups[gi].n_valid; ++l) {
+            int id = L2.groups[gi].inst[l]; if (id < (int)N) continue;
+            const InstrumentSpec& in = extra[id - N]; std::vector<UnitCashflow> u; std::vector<ProjectionTerm> pt2;
+            for (auto& c : in.fixed) replicate_fixed(c.amount, c.day / DPY, df, u);
+            for (auto& f : in.flt) replicate_ibor(f.scale, f.a_day / DPY, f.b_day / DPY, f.pay_day / DPY, df, pf, u, pt2);
+            for (auto& o : in.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, u);
+            sort_by_time(u); scan_discount(cd.S, u, ref.data()); scan_projection(cp.S, pt2, ref.data() + Kd);
+            gather(L2, Kd, Kp, out2, (int)gi, l, got.data());
+            double scale = 1.0; for (double v : ref) scale = std::max(scale, std::fabs(v));
+            for (int k = 0; k < Kd + Kp; ++k) ins_worst = std::max(ins_worst, std::fabs(got[k] - ref[k]) / scale);
+        }
+        // the original instruments must be untouched by the inserts
+        for (size_t gi = 0; gi < L2.groups.size(); ++gi) for (int l = 0; l < L2.groups[gi].n_valid; ++l) {
+            int id = L2.groups[gi].inst[l]; if (id >= (int)N) continue;
+            gather(L2, Kd, Kp, out2, (int)gi, l, got.data());
+            double scale = 1.0; for (int k = 0; k < Kd; ++k) scale = std::max(scale, std::fabs(sd[(size_t)id*Kd+k])); for (int k = 0; k < Kp; ++k) scale = std::max(scale, std::fabs(sp[(size_t)id*Kp+k]));
+            for (int k = 0; k < Kd; ++k) ins_worst = std::max(ins_worst, std::fabs(got[k] - sd[(size_t)id*Kd+k]) / scale);
+            for (int k = 0; k < Kp; ++k) ins_worst = std::max(ins_worst, std::fabs(got[Kd+k] - sp[(size_t)id*Kp+k]) / scale);
+        }
+        ladder::free_aligned(out2);
+        valid = valid && std::isfinite(ins_worst) && ins_worst < 1e-9 && ins_cat[2] == 0;
+        std::printf("\nincremental insert: %zu new instruments added to the %s-instrument layout\n", M, grouped(N).c_str());
+        const char* names3[3] = {"into a free lane", "as a new group", "refused (rebuild needed)"};
+        for (int c = 0; c < 3; ++c) std::printf("  %-26s %7zu inserts  %10.3f us each\n", names3[c], ins_cat[c], ins_cat[c] ? ins_cat_ms[c] * 1e3 / ins_cat[c] : 0.0);
+        std::printf("  all inserts %.2f ms (%.2f us each); full rebuild of the %s-instrument layout %.0f ms\n", ins_ms, ins_ms * 1e3 / M, grouped(N + M).c_str(), ins_rebuild_ms);
+        std::printf("  grouped ladder of every instrument (new and original) vs scalar scan: max difference %.1e\n", ins_worst);
+    }
 
     // ---- BASE
     double t_base = -1, w_base = 0;
@@ -183,6 +256,57 @@ int main(int argc, char** argv) try
         for (size_t i=0; i<bp.size(); ++i)
             valid = valid && std::isfinite(bp[i]) && std::fabs(bp[i]-sp[i]) <= 1e-2 + 1e-6*std::max(std::fabs(bp[i]),std::fabs(sp[i]));
         w_base = w; }
+
+    // ---- ablation rows: the same bump scheme as BASE with the object model removed, then with a shared date table.
+    //   SOA   flat arrays per instrument, no virtual dispatch; every discount factor still by bracket search and exp
+    //   TABLE as SOA, but discount factors come from a table over the unique dates, rebuilt for each bumped curve
+    double t_soa = -1, t_tab = -1;
+    if (run_base) {
+        std::vector<size_t> fo(N + 1, 0), lo(N + 1, 0), oo(N + 1, 0);
+        std::vector<FixedFlow> fx; std::vector<FloatFlow> fl; std::vector<OisFlow> os;
+        for (size_t i = 0; i < N; ++i) {
+            for (auto& c : book[i].fixed) fx.push_back(c); for (auto& c : book[i].flt) fl.push_back(c); for (auto& c : book[i].ois) os.push_back(c);
+            fo[i+1] = fx.size(); lo[i+1] = fl.size(); oo[i+1] = os.size();
+        }
+        auto npv_soa = [&](size_t i, const Curve& d, const Curve& p) {
+            double s = 0;
+            for (size_t j = fo[i]; j < fo[i+1]; ++j) s += fx[j].amount * d.df(fx[j].day / DPY);
+            for (size_t j = lo[i]; j < lo[i+1]; ++j) { auto& f = fl[j]; s += f.scale * (p.df(f.a_day / DPY) / p.df(f.b_day / DPY) - 1.0) * d.df(f.pay_day / DPY); }
+            for (size_t j = oo[i]; j < oo[i+1]; ++j) { auto& o = os[j]; s += o.N * (d.df(o.a_day / DPY) / d.df(o.b_day / DPY) - 1.0) * d.df(o.pay_day / DPY); }
+            return s; };
+        std::vector<double> ad(N * Kd), ap(N * Kp); const double eps = 1e-5;
+        t0 = now_ms();
+        for (int k = 1; k <= Kd; ++k) { Curve up = cd.bumped(k, eps), dn = cd.bumped(k, -eps); for (size_t i = 0; i < N; ++i) ad[i*Kd+k-1] = (npv_soa(i, up, cp) - npv_soa(i, dn, cp)) / (2*eps); }
+        for (int k = 1; k <= Kp; ++k) { Curve up = cp.bumped(k, eps), dn = cp.bumped(k, -eps); for (size_t i = 0; i < N; ++i) ap[i*Kp+k-1] = (npv_soa(i, cd, up) - npv_soa(i, cd, dn)) / (2*eps); }
+        t_soa = now_ms() - t0;
+        for (size_t i = 0; i < ad.size(); ++i) valid = valid && std::isfinite(ad[i]) && std::fabs(ad[i]-sd[i]) <= 1e-2 + 1e-6*std::max(std::fabs(ad[i]),std::fabs(sd[i]));
+        for (size_t i = 0; i < ap.size(); ++i) valid = valid && std::isfinite(ap[i]) && std::fabs(ap[i]-sp[i]) <= 1e-2 + 1e-6*std::max(std::fabs(ap[i]),std::fabs(sp[i]));
+
+        // shared date table: unique days, per-flow table indices
+        std::vector<int> days; for (auto& c : fx) days.push_back(c.day); for (auto& f : fl) { days.push_back(f.pay_day); days.push_back(f.a_day); days.push_back(f.b_day); }
+        for (auto& o : os) { days.push_back(o.pay_day); days.push_back(o.a_day); days.push_back(o.b_day); }
+        std::sort(days.begin(), days.end()); days.erase(std::unique(days.begin(), days.end()), days.end());
+        auto ix = [&](int d) { return (int)(std::lower_bound(days.begin(), days.end(), d) - days.begin()); };
+        std::vector<int> fxi(fx.size()), fli(fl.size() * 3), osi(os.size() * 3);
+        for (size_t j = 0; j < fx.size(); ++j) fxi[j] = ix(fx[j].day);
+        for (size_t j = 0; j < fl.size(); ++j) { fli[3*j] = ix(fl[j].pay_day); fli[3*j+1] = ix(fl[j].a_day); fli[3*j+2] = ix(fl[j].b_day); }
+        for (size_t j = 0; j < os.size(); ++j) { osi[3*j] = ix(os[j].pay_day); osi[3*j+1] = ix(os[j].a_day); osi[3*j+2] = ix(os[j].b_day); }
+        const size_t nd = days.size(); std::vector<double> Db(nd), Pb(nd), Du(nd), Dd(nd), Pu(nd), Pd(nd);
+        auto fill = [&](std::vector<double>& v, const Curve& c) { for (size_t m = 0; m < nd; ++m) v[m] = c.df(days[m] / DPY); };
+        auto npv_tab = [&](size_t i, const std::vector<double>& D, const std::vector<double>& P) {
+            double s = 0;
+            for (size_t j = fo[i]; j < fo[i+1]; ++j) s += fx[j].amount * D[fxi[j]];
+            for (size_t j = lo[i]; j < lo[i+1]; ++j) s += fl[j].scale * (P[fli[3*j+1]] / P[fli[3*j+2]] - 1.0) * D[fli[3*j]];
+            for (size_t j = oo[i]; j < oo[i+1]; ++j) s += os[j].N * (D[osi[3*j+1]] / D[osi[3*j+2]] - 1.0) * D[osi[3*j]];
+            return s; };
+        std::vector<double> td(N * Kd), tp(N * Kp);
+        t0 = now_ms(); fill(Db, cd); fill(Pb, cp);
+        for (int k = 1; k <= Kd; ++k) { fill(Du, cd.bumped(k, eps)); fill(Dd, cd.bumped(k, -eps)); for (size_t i = 0; i < N; ++i) td[i*Kd+k-1] = (npv_tab(i, Du, Pb) - npv_tab(i, Dd, Pb)) / (2*eps); }
+        for (int k = 1; k <= Kp; ++k) { fill(Pu, cp.bumped(k, eps)); fill(Pd, cp.bumped(k, -eps)); for (size_t i = 0; i < N; ++i) tp[i*Kp+k-1] = (npv_tab(i, Db, Pu) - npv_tab(i, Db, Pd)) / (2*eps); }
+        t_tab = now_ms() - t0;
+        for (size_t i = 0; i < td.size(); ++i) valid = valid && std::isfinite(td[i]) && std::fabs(td[i]-sd[i]) <= 1e-2 + 1e-6*std::max(std::fabs(td[i]),std::fabs(sd[i]));
+        for (size_t i = 0; i < tp.size(); ++i) valid = valid && std::isfinite(tp[i]) && std::fabs(tp[i]-sp[i]) <= 1e-2 + 1e-6*std::max(std::fabs(tp[i]),std::fabs(sp[i]));
+    }
 
     const double t_scan = best_rep + best_scan, t_grp = best_tab + best_s;
     size_t live = 0; for (auto& g : L.groups) live += g.n_valid;
@@ -202,6 +326,8 @@ int main(int argc, char** argv) try
         if (run_base) std::printf(" %8.0fx", t_base / ms);
         std::printf("\n"); };
     if (run_base) result("BASE  bump-and-reprice, every node up and down", t_base);
+    if (run_base) result("SOA   same bumps, flat arrays, no virtual calls", t_soa);
+    if (run_base) result("TABLE same bumps, flat arrays, shared date table", t_tab);
     result("SCAN  replication + scalar ladder", t_scan);
     result("GRP   date-table refresh + kernel", t_grp);
     std::printf("  GRP is %.1fx faster than SCAN per curve update\n", t_scan / t_grp);

@@ -15,7 +15,8 @@ template <Store policy>
 inline void store8(double* p, vec8 v) { if constexpr (policy == Store::streaming) vstore_stream(p, v); else vstore(p, v); }
 
 template <Store policy = Store::normal>
-inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencils& Sp, double* out)
+inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencils& Sp, double* out,
+                         size_t g_begin = 0, size_t g_end = static_cast<size_t>(-1))
 {
     Sd.validate(); Sp.validate();
     if (!L.refreshed || L.discount_grid != Sd.B || L.projection_grid != Sp.B)
@@ -26,7 +27,8 @@ inline void scan_grouped(const GroupLayout& L, const Stencils& Sd, const Stencil
     const int Kd = Sd.K(), Kp = Sp.K();
     const size_t stride = L.stride(Kd, Kp);
     std::vector<vec8> famt, oamt_p, oamt_a, oamt_b, pacc((size_t)Kp + 1);
-    for (size_t gi = 0; gi < L.groups.size(); ++gi) {
+    if (g_end > L.groups.size()) g_end = L.groups.size();   // [g_begin, g_end): lets callers split groups across threads
+    for (size_t gi = g_begin; gi < g_end; ++gi) {
         const Group& G = L.groups[gi];
         double* out_d = out + gi * stride;
         double* out_p = out_d + (size_t)Kd * LANES;

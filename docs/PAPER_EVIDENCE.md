@@ -8,6 +8,9 @@ no AVX-512). Do not combine rows from different machines or runs into one table.
 |---|---|---|
 | Box-wave derivative, capped/open terminal wave | `ctest --preset release` | Oracle-based tests. |
 | Scalar discount scan is O(N+K) once records are sorted | `ladder/scan.hpp` | Monotone forward/backward boundary cursors. |
+| 500k book ablation, per-CPU variation, thread scaling, worst case, incremental insert | `run_pinned_campaign.sh`, `LADDER_THREADS`, `LADDER_UNIQUE_SIG`, `LADDER_INSERT`, `copy_floor` | `2026-10-11_i7-12700K_pinned/` |
+| Projection-pass reconciliation (term-rate swaps) | `rfr_projection_check.py`, CTest `rfr_projection_replay` | `examples/rfr_reconcile/projection/` |
+| Second-order AAD baseline | `bench_cross_gamma` | `bench_cross_gamma_3runs.txt` |
 | 500k book: BASE, SCAN, GRP, write-only comparison | `bench_library 500000 1 3`, `write_floor` | `bench_library_avx2_500k.txt`, `write_floor.txt` |
 | Working set and lane occupancy | `bench_library N 0 5` | `working_set_sweep_avx2.txt` |
 | Adjoint comparison (scan, direct N·K, tape) | `adjoint_bench 500000 2` | `adjoint_bench_500k.txt`; CTest `adjoint_demo_smoke`. |
