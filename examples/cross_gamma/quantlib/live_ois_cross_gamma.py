@@ -96,17 +96,30 @@ def run_live(name: str) -> None:
         b = calendar.adjust(ql.Date(6, ql.April, 2027), ql.Following)
         p = calendar.advance(b, 2, ql.Days)
         far = calendar.advance(p, 6, ql.Months)
+        dates = [today, a, b, p, far]
     elif name == "stress":
         a = calendar.adjust(ql.Date(5, ql.January, 2047), ql.Following)
         b = calendar.adjust(ql.Date(6, ql.January, 2048), ql.Following)
         p = calendar.advance(b, 65, ql.Days)  # deliberately nonmarket-standard
         far = calendar.advance(p, 1, ql.Years)
+        dates = [today, a, b, p, far]
+    elif name == "interior":
+        # The accrual end is NOT a wave boundary: wave 3 covers both
+        # accrued and post-accrual days, giving -2*A*r_k*s_k != 0
+        # on the same wave diagonal.
+        a = calendar.adjust(ql.Date(4, ql.January, 2027), ql.Following)
+        b = calendar.adjust(ql.Date(6, ql.April, 2027), ql.Following)
+        p = calendar.advance(b, 8, ql.Days)
+        left = ql.Date(29, ql.March, 2027)
+        right = ql.Date(13, ql.April, 2027)
+        far = calendar.advance(p, 6, ql.Months)
+        assert a < left < b < right < p
+        dates = [today, a, left, right, p, far]
     else:
         raise ValueError(name)
     assert today < a < b < p < far
     ql.Settings.instance().evaluationDate = today
 
-    dates = [today, a, b, p, far]
     B = tuple(dc.yearFraction(today, d) for d in dates)
     assert all(B[i] < B[i+1] for i in range(len(B)-1))
     N, flat_rate = 1_000_000.0, 0.035
@@ -135,7 +148,9 @@ def run_live(name: str) -> None:
     # Keep the exact scaling used by the coupon, not an assumed notional.
     tau_index = index.dayCounter().yearFraction(a,b)
     scale = N * coupon.accrualPeriod() / tau_index
-    ois = ReducedOis(B[1],B[2],B[3],
+    ois = ReducedOis(dc.yearFraction(today,a),
+                     dc.yearFraction(today,b),
+                     dc.yearFraction(today,p),
                      scale*D_p*D_a/D_b,scale*D_p)
     print(f"\nQuantLib {getattr(ql,'__version__','unknown')} — {name}")
     print(f"  start={a}, end={b}, pay={p}; calendar-day lag={p-b}")
@@ -150,7 +165,11 @@ def run_live(name: str) -> None:
             shock[k] += v
         return ql_price(shock)
 
-    j, k = 1, 2  # accrual wave and lag-only wave
+    j, k = (2, 3) if name == "interior" else (1, 2)
+    # In the interior case j covers both sides of b; k is a lag-only wave.
+    if name == "interior":
+        assert B[j] < ois.b < B[j + 1]
+        assert ois.lag_correction(B,j,j) != 0.0
     h = 1e-4
     first = (repriced(j,h)-repriced(j,-h))/(2*h)
     assert_near("first-order accrual",first,ois.gradient(B,j),atol=0.05,rtol=8e-6)
@@ -172,18 +191,63 @@ def run_live(name: str) -> None:
         errors.append(abs(observed-true_h))
     if errors[2] >= 0.40*errors[1]+1e-4:
         raise AssertionError("central mixed difference not converging quadratically")
+    if name == "interior":
+        # This is the new validation gate. Earlier standard/stress tests put
+        # b exactly at a wave boundary and could not probe diagonal r_j*s_j.
+        frozen_diagonal = ois.frozen_hessian(B,j,j)
+        diagonal_correction = ois.lag_correction(B,j,j)
+        exact_diagonal = ois.exact_hessian(B,j,j)
+        assert abs(diagonal_correction) > 10.0
+        assert_near("interior diagonal decomposition",
+                    frozen_diagonal+diagonal_correction,
+                    exact_diagonal,atol=1e-7,rtol=1e-12)
+        print(f"  interior wave={j+1}: frozen Hjj={frozen_diagonal:+.9f},"
+              f" correction={diagonal_correction:+.9f},"
+              f" corrected Hjj={exact_diagonal:+.9f}")
+        # Use wider steps for this *truncation-order* check. At h=0.002,
+        # QL double precision cancellation dominates the O(h^2) remainder,
+        # making a monotonic step-ratio test statistically meaningless.
+        previous_error = None
+        for eps in (0.16, 0.08, 0.04, 0.02):
+            observed = (repriced(j,eps)-2.0*price0+repriced(j,-eps))/(eps*eps)
+            assert_near(f"diagonal gamma h={eps}",observed,exact_diagonal,
+                        atol=0.015,rtol=2e-6)
+            err = abs(observed-exact_diagonal)
+            if previous_error is not None and err > 0.40*previous_error+0.00005:
+                raise AssertionError("interior diagonal FD not converging quadratically")
+            previous_error = err
+
+        # Entire 5-by-5 Hessian, not only the selected j,k entry.
+        # Reprices the QuantLib coupon for every diagonal and unique pair.
+        full_h=0.004
+        checked=0
+        for u in range(len(B)-1):
+            for v in range(u,len(B)-1):
+                expected=ois.exact_hessian(B,u,v)
+                if u==v:
+                    observed=(repriced(u,full_h)-2*price0+
+                              repriced(u,-full_h))/(full_h*full_h)
+                else:
+                    observed=(repriced(u,full_h,v,full_h)-
+                              repriced(u,full_h,v,-full_h)-
+                              repriced(u,-full_h,v,full_h)+
+                              repriced(u,-full_h,v,-full_h))/(4*full_h*full_h)
+                assert_near(f"full Hessian [{u},{v}]",observed,expected,
+                            atol=0.12,rtol=2e-5)
+                checked+=1
+        print(f"  independent QuantLib complete Hessian: {checked} symmetric entries PASS")
     handle.linkTo(curve_for(base_shocks))
     print(f"PASS: live QuantLib OIS payment-lag gamma ({name})")
 
 
 def main() -> int:
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario",choices=("standard","stress","all","offline"),
+    parser.add_argument("--scenario",choices=("standard","stress","interior","all","offline"),
                         default="offline")
     args=parser.parse_args()
     model_unit_checks()
     if args.scenario != "offline":
-        for scenario in (("standard","stress") if args.scenario == "all"
+        for scenario in (("standard","stress","interior") if args.scenario == "all"
                          else (args.scenario,)):
             run_live(scenario)
     return 0

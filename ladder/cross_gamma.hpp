@@ -1,8 +1,8 @@
 #pragma once
-// Research continuation of Lars's 10 October 2026 scan_discount_hessian draft.
-// This OPTIONAL second pass computes only diagonal curvature of fixed discounted
-// cashflows. Off-diagonal curvature is a lazy view of the existing first-order
-// Hagan-wave ladder. This is NOT an OIS/IBOR general-Hessian implementation.
+// Optional discounted-cashflow Hagan-wave diagonal gamma and cross-gamma.
+// Public wave indices in this header are zero-based; Stencils overlaps are
+// one-based internally. Not a general nonlinear coupon or quote Hessian.
+// Provenance: docs/LARS_CROSS_GAMMA_BRANCH.md.
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -21,14 +21,28 @@ inline void validate_cross_gamma_stencils(const Stencils& S) {
 
 // Input records must be finite and in ascending time order. O(N + K) after sort.
 // Does not change or rerun first-order risk. Returns one diagonal entry per wave.
+// Reuse K-sized arrays across repeated curves/instruments. Do not share
+// the same instance concurrently between worker threads.
+struct GammaDiagonalScratch {
+    std::vector<double> interior2, suffix;
+    void prepare(int K) {
+        interior2.resize(static_cast<size_t>(K) + 1);
+        suffix.resize(static_cast<size_t>(K) + 1);
+        std::fill(interior2.begin(), interior2.end(), 0.0);
+        std::fill(suffix.begin(), suffix.end(), 0.0);
+    }
+};
+
 inline void scan_discount_gamma_diagonal(const Stencils& S,
                                          std::span<const UnitCashflow> cf,
+                                         GammaDiagonalScratch& scratch,
                                          double* diagonal) {
     validate_cross_gamma_stencils(S);
     if (!diagonal) throw std::invalid_argument("scan_discount_gamma_diagonal: null output");
     const int K = S.K();
-    std::vector<double> interior2(static_cast<size_t>(K) + 1, 0.0);
-    std::vector<double> suffix(static_cast<size_t>(K) + 1, 0.0);
+    scratch.prepare(K);
+    auto& interior2 = scratch.interior2;
+    auto& suffix = scratch.suffix;
     int bucket = 1;
     double previous = -std::numeric_limits<double>::infinity();
     for (const auto& c : cf) {
@@ -68,6 +82,14 @@ inline void scan_discount_gamma_diagonal(const Stencils& S,
     diagonal[K - 1] = interior2[K] + last_len * last_len * suffix[K];
 }
 
+// Backwards-compatible convenience overload, one allocation per call.
+inline void scan_discount_gamma_diagonal(const Stencils& S,
+                                         std::span<const UnitCashflow> cf,
+                                         double* diagonal) {
+    GammaDiagonalScratch scratch;
+    scan_discount_gamma_diagonal(S, cf, scratch, diagonal);
+}
+
 // O(K) storage, O(1) element access, O(K) Hessian-vector product.
 // Off diagonal valid for linear fixed-amount discounted cashflows only.
 struct DiscountCrossGammaView {
@@ -85,6 +107,18 @@ struct DiscountCrossGammaView {
             throw std::invalid_argument("DiscountCrossGammaView: wrong vector size");
     }
 
+    // This view BORROWS all three inputs. Reject temporary stencils at compile
+    // time; retain the lvalue Stencils and both gradient/diagonal buffers for
+    // at least the lifetime of this view, without modifying them meanwhile.
+    DiscountCrossGammaView(Stencils&&, std::span<const double>,
+                           std::span<const double>) = delete;
+    DiscountCrossGammaView(const Stencils&&, std::span<const double>,
+                           std::span<const double>) = delete;
+
+    // Fixed discounted cashflows ONLY: H[j,k]=-width[min]*gradient[max]
+    // off-diagonal. For lagged same-curve OIS, separately ADD the rank-two
+    // ois_lag_gamma_correction for each coupon. Do not use this uncorrected
+    // view for arbitrary nonlinear coupon, projection, or quote gamma.
     double at(int row, int col) const {
         const int K = stencils.K();
         if (row < 0 || col < 0 || row >= K || col >= K)
@@ -156,18 +190,18 @@ inline void add_ois_lag_gamma_product(const Stencils& S,
     // Delay writes until all coupon products have read v. Works in-place and
     // for partially overlapping input/output buffers.
     std::vector<double> correction(static_cast<size_t>(K), 0.0);
-    std::vector<double> r(static_cast<size_t>(K)), t(static_cast<size_t>(K));
+    std::vector<double> r(static_cast<size_t>(K)), s(static_cast<size_t>(K));
     for (const auto& c : coupons) {
         validate_ois_lag_term(c);
         double rv = 0.0, tv = 0.0;
         for (int k = 0; k < K; ++k) {
             r[k] = S.overlap(k + 1, c.b) - S.overlap(k + 1, c.a);
-            t[k] = S.overlap(k + 1, c.p) - S.overlap(k + 1, c.b);
+            s[k] = S.overlap(k + 1, c.p) - S.overlap(k + 1, c.b);
             rv += r[k] * v[k];
-            tv += t[k] * v[k];
+            tv += s[k] * v[k];
         }
         for (int k = 0; k < K; ++k)
-            correction[k] -= c.A * (r[k] * tv + t[k] * rv);
+            correction[k] -= c.A * (r[k] * tv + s[k] * rv);
     }
     for (int k = 0; k < K; ++k)
         out[k] += correction[k];
