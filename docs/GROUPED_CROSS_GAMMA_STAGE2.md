@@ -63,7 +63,7 @@ matrix-free HVP, OIS off-diagonals, capped/open tails and AVX store parity.
 
 These results are **not** the paper's 500,000-instrument 63.3 ms run;
 different host and grouping counts. Do not conflate the run sets or call
-the extra gamma pass free. Nor is this a QuantLib/AAD second-order
+the extra gamma pass free. Nor is this an AAD second-order
 performance baseline.
 
 ## Reproduce
@@ -71,28 +71,15 @@ performance baseline.
 ~~~sh
 cmake -S . -B build-gamma -DCMAKE_BUILD_TYPE=Release \
   -DLADDER_LANES=AVX2 \
-  -DLADDER_BUILD_GAMMA_BENCHMARK=ON \
-  -DLADDER_BUILD_QUANTLIB=OFF
+  -DLADDER_BUILD_GAMMA_BENCHMARK=ON
 cmake --build build-gamma --target test_gamma_grouped bench_gamma_grouped
 ctest --test-dir build-gamma --output-on-failure -R '^gamma_grouped$'
 ./build-gamma/examples/benchmark/bench_gamma_grouped 500000 5 \
-  ./examples/benchmark/quantlib_example_curves.txt
+  ./build-gamma/examples/benchmark/rfr_curves.txt
 ~~~
 
 For AVX-512, select LADDER_LANES=AVX512 on a compatible host.
 For a portable build, select LADDER_LANES=PORTABLE.
-
-## Independent QuantLib 1.43 second-order gate
-
-[Live QuantLib CI run 38100830063](https://github.com/andyD123/data-oriented-curve-risk/actions/runs/38100830063)
-passed three fully forecast same-curve OIS cases, including an accrual-end
-date lying inside a wave. The interior wave-3 gamma consists of
-**-461.423463 frozen risk minus 833.219334 lag correction**,
-giving **-1294.642797**. Live QuantLib finite differences and the
-complete 5x5 Hessian agreed within the test tolerances. This verifies the
-financially nontrivial diagonal lag correction absent from the earlier
-boundary-aligned tests. The test is a curve-wave derivative, not
-stochastic payment-delay convexity or quote-rebootstrap gamma.
 
 ## Safe usage
 

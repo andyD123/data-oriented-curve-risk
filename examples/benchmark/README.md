@@ -1,6 +1,6 @@
 # benchmark — library kernel on a seasoned book
 
-Bonds, IBOR swaps and compounded-OIS swaps on a single RFR curve. The committed `rfr_curves.txt` is an invented placeholder (not a market snapshot) so the tests and examples run without third-party data; the forward-projection block carries the same curve, as in a one-curve RFR market.
+Bonds, IBOR swaps and compounded-OIS swaps on a single RFR curve. No curve data is committed: the build writes a synthetic flat `rfr_curves.txt` into the build directory for tests and smoke runs, and the published results use the Bank of England SONIA curve; the forward-projection block carries the same curve, as in a one-curve RFR market.
 
 **Using the Bank of England SONIA curve.** The published results use it. See [docs/BOE_CURVE.md](../../docs/BOE_CURVE.md) for downloading it and running the benchmark and reconciliation. The curve file stays git-ignored.
 

@@ -14,7 +14,7 @@ This is the shortest way into the public API. Start with
 4. Independently reprice one bounded or open-final-wave shock with
    `Curve::df_bumped`, and check the central-difference gradient.
 
-Run on any backend without a QuantLib dependency:
+Run on any backend:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

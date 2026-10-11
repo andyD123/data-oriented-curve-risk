@@ -1,7 +1,7 @@
 # Reduced-form cross-gamma benchmark
 
 Research evidence only: this is NOT the paper's 500,000-instrument
-benchmark, and it is NOT a QuantLib benchmark.
+benchmark.
 
 Build and run:
 
@@ -29,7 +29,7 @@ per-instrument dense Hessians. All three methods produce the same output.
    comparator. Revalue the complete cashflow portfolio 8,713 times:
    1 baseline + 2*66 diagonal bumps + 4*2145 pairwise cross bumps.
    This baseline's price loop evaluates cashflow amounts and exponentials
-   only; it omits real-world QuantLib/curve-rebootstrap overhead.
+   only; it omits real-world curve-rebootstrap overhead.
 
 ## Reproducible run of the committed benchmark source
 

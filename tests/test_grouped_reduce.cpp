@@ -1,6 +1,6 @@
 // Direct in-register portfolio reduction versus the existing grouped output,
 // scalar per-instrument oracle, and empty/stale/irregular-grid conditions.
-// The test covers fixed, IBOR, and OIS flows without any QuantLib dependency.
+// The test covers fixed, IBOR, and OIS flows.
 #include "ladder/aligned_memory.hpp"
 #include "ladder/scan_grouped_reduce.hpp"
 #include "ladder/scan.hpp"

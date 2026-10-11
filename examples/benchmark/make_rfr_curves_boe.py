@@ -10,11 +10,14 @@ yourself and point this script at it:
 Pure standard library (zipfile + xml parsing, no openpyxl). Reads the "spot curve" sheet (not "spot, short end") of the newest
 workbook that contains the requested date (spot rates in per cent, 0.5y..25y in 0.5y steps), converts
 r(t) to discount factors exp(-r t), interpolates log-linearly in the discount factor between pillars with
-DF(0)=1, and extends flat-forward beyond 25y. The 30 + 36 node times of the existing rfr_curves.txt are
-kept, so the bucket structure is unchanged; the trailing instrument examples are preserved. The "proj" block
-carries the same curve (single-curve RFR market).
+DF(0)=1, and extends flat-forward beyond 25y. The benchmark's 30 + 36 node times (GRIDS below) are used for
+the two blocks; the "proj" block carries the same curve (single-curve RFR market).
 
-Usage: python3 make_rfr_curves_boe.py oisddata.zip --date YYYY-MM-DD [--template rfr_curves.txt] [--out rfr_curves_boe.txt]
+With --flat RATE no download is needed: it writes a synthetic flat curve (continuous rate RATE) on the same grids,
+which is what the build uses so the tests and smoke runs work without third-party data.
+
+Usage: python3 make_rfr_curves_boe.py oisddata.zip --date YYYY-MM-DD [--out rfr_curves_boe.txt]
+       python3 make_rfr_curves_boe.py --flat 0.03 --out rfr_curves.txt
 
 Attribution if you publish numbers derived from the output (Bank of England requirement for SONIA data;
 the OIS curve data are the Bank's copyright): source "Bank of England, UK OIS spot curve (Bloomberg Finance
@@ -28,6 +31,31 @@ import re
 import zipfile
 from pathlib import Path
 
+
+
+# Node times (years) of the benchmark grids: 30 discount ("ois") and 36 projection ("proj") forward buckets,
+# 0 included. In an RFR market both blocks carry the same curve on their own node grid.
+GRIDS = {
+    "ois": [
+    0.0, 0.0027397260273972603, 0.005479452054794521, 0.00821917808219178, 0.024657534246575342,
+    0.043835616438356165, 0.06301369863013699, 0.09315068493150686, 0.17534246575342466, 0.25205479452054796,
+    0.3287671232876712, 0.4054794520547945, 0.5013698630136987, 1.252054794520548, 1.5041095890410958,
+    1.7616438356164383, 2.010958904109589, 3.0082191780821916, 4.008219178082192, 5.008219178082192,
+    6.008219178082192, 7.008219178082192, 8.013698630136986, 9.01095890410959, 10.01095890410959,
+    11.01095890410959, 12.013698630136986, 15.013698630136986, 20.019178082191782, 25.024657534246575,
+    30.03013698630137
+    ],
+    "proj": [
+    0.005479452054794521, 0.5068493150684932, 0.5917808219178082, 0.6712328767123288, 0.7561643835616438,
+    0.8438356164383561, 0.9232876712328767, 1.0054794520547945, 1.095890410958904, 1.1753424657534246,
+    1.252054794520548, 1.3397260273972602, 1.4191780821917808, 1.5041095890410958, 1.5890410958904109,
+    1.6712328767123288, 1.7616438356164383, 1.841095890410959, 1.9232876712328768, 2.010958904109589,
+    3.0082191780821916, 4.008219178082192, 5.008219178082192, 6.008219178082192, 7.008219178082192,
+    8.013698630136986, 9.01095890410959, 10.01095890410959, 12.013698630136986, 15.013698630136986,
+    20.019178082191782, 25.024657534246575, 30.03013698630137, 35.02739726027397, 40.032876712328765,
+    50.038356164383565, 60.04657534246575
+    ],
+}
 
 
 def _strings(z):
@@ -95,37 +123,36 @@ class Curve:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("zip")
-    ap.add_argument("--date", required=True, help="curve date YYYY-MM-DD (a published business day)")
+    ap.add_argument("zip", nargs="?")
+    ap.add_argument("--date", help="curve date YYYY-MM-DD (a published business day)")
+    ap.add_argument("--flat", type=float, help="write a synthetic flat curve at this continuous rate instead")
     here = Path(__file__).resolve().parent
-    ap.add_argument("--template", default=str(here / "rfr_curves.txt"))
     ap.add_argument("--out", default=str(here / "rfr_curves_boe.txt"))
     a = ap.parse_args()
-    want = dt.date.fromisoformat(a.date)
 
-    outer = zipfile.ZipFile(a.zip)
-    for xlsx in sorted(n for n in outer.namelist() if n.endswith(".xlsx")):
-        mats, table = read_spot_rows(outer.read(xlsx))
-        if want in table:
-            break
+    if a.flat is not None:
+        df = lambda t: math.exp(-a.flat * t)
+        what = "synthetic flat curve"
     else:
-        raise SystemExit(f"{want} not found in {a.zip} (not a published business day?)")
-    rates = table[want]
-    curve = Curve(mats, rates)
+        if not a.zip or not a.date:
+            ap.error("give the zip and --date, or --flat RATE")
+        want = dt.date.fromisoformat(a.date)
+        outer = zipfile.ZipFile(a.zip)
+        for xlsx in sorted(n for n in outer.namelist() if n.endswith(".xlsx")):
+            mats, table = read_spot_rows(outer.read(xlsx))
+            if want in table:
+                break
+        else:
+            raise SystemExit(f"{want} not found in {a.zip} (not a published business day?)")
+        curve = Curve(mats, table[want])
+        df = curve.df
+        what = f"BoE UK OIS spot curve {want} ({xlsx}), {len(mats)} pillars {mats[0]}y-{mats[-1]}y"
 
-    tok = Path(a.template).read_text().split()
-    pos, nc, blocks = 1, int(tok[0]), []
-    for _ in range(nc):
-        n = int(tok[pos + 1])
-        blocks.append((tok[pos], [float(x) for x in tok[pos + 2:pos + 2 + 2 * n:2]]))
-        pos += 2 + 2 * n
-    lines = [str(nc)]
-    for name, times in blocks:
-        lines.append(f"{name} {len(times)} " + " ".join(f"{t:.17g} {curve.df(t):.17g}" for t in times))
-    lines.append(" ".join(tok[pos:]))
+    lines = [str(len(GRIDS))]
+    for name, times in GRIDS.items():
+        lines.append(f"{name} {len(times)} " + " ".join(f"{t:.17g} {df(t):.17g}" for t in times))
     Path(a.out).write_text("\n".join(lines) + "\n")
-    print(f"wrote {a.out}: BoE UK OIS spot curve {want} ({xlsx}), {len(mats)} pillars "
-          f"{mats[0]}y-{mats[-1]}y, 1y {rates[1]:.4f}% 10y {rates[mats.index(10.0)]:.4f}%")
+    print(f"wrote {a.out}: {what}")
 
 
 if __name__ == "__main__":

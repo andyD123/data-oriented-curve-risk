@@ -3,7 +3,7 @@
 Raw program output, unedited. One thread, wall clock, best of the stated repetitions, unpinned desktop.
 
 - CPU: 12th Gen Intel Core i7-12700K (AVX2 + FMA, **no AVX-512**), 25 GB RAM, Linux, GCC 13.3.0, Release.
-- Curves: `examples/benchmark/rfr_curves.txt` (30 + 36 forward buckets; the published results used a copy built from the Bank of England SONIA curve, see docs/BOE_CURVE.md; regenerate with `benchmarks/run_headline_set.sh`).
+- Curves: `rfr_curves.txt` in each program's working directory (30 + 36 forward buckets; built from the Bank of England SONIA curve, see docs/BOE_CURVE.md; regenerate with `benchmarks/run_headline_set.sh`).
 - "avx2" results use `-DLADDER_LANES=AVX2 -DLADDER_NATIVE_ARCH=ON`; "portable" uses the default auto-vectorised
   build. The sweep, adjoint, aggregation and write-floor runs were built with `-march=native`.
 

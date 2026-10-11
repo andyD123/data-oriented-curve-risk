@@ -1,5 +1,5 @@
 // Standalone curve construction, interpolation, tails and box-shock checks.
-// The curve does not depend on QuantLib, calendars or the SIMD backend.
+// The curve does not depend on calendars or the SIMD backend.
 #include "ladder/curve.hpp"
 #include "ladder/scan.hpp"
 #include "ladder/replicate.hpp"

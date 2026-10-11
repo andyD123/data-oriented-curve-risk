@@ -1,6 +1,6 @@
 # The Bank of England SONIA curve
 
-The benchmarks and reconciliation in the paper use this curve. The data are not in this repository, so this page shows how to obtain it and repeat the runs. The committed `rfr_curves.txt` is only an invented placeholder so the tests run without third-party data.
+The benchmarks and reconciliation in the paper use this curve. The data are not in this repository, so this page shows how to obtain it and repeat the runs. No curve data is committed; the build writes a synthetic flat curve into each example's build directory so the tests run without third-party data.
 
 `make_rfr_curves_boe.py` builds a curve file from the Bank of England's published SONIA OIS spot curve (same 30 + 36 node grid; log-linear in discount factors between the 0.5y-25y pillars, flat forward beyond). The curve is GBP / SONIA.
 
@@ -22,7 +22,7 @@ benchmarks/run_pinned_campaign.sh <build> <out dir> 2 <curve file>              
 benchmarks/run_cpu_sweep.sh      <build> <out dir> <curve file>                          # per-CPU variation
 ```
 
-   The other benchmark programs read `rfr_curves.txt` from their working directory, so for them copy the BoE file over a *copy* of `rfr_curves.txt` in a build directory, never over the committed file.
+   The other benchmark programs read `rfr_curves.txt` from their working directory, so for them copy the BoE file to `rfr_curves.txt` in the program's build directory (`build/examples/benchmark`, `benchmark_paper`, `aggregation`). The build only writes its synthetic curve when that file is absent, so it never overwrites yours.
 4. For the reconciliation (`examples/rfr_reconcile`), generate the fixtures from the curve file into a git-ignored folder, then scan and check there. The projection pass has the same option:
 
 ```

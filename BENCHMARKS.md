@@ -4,8 +4,8 @@ All figures are single-threaded first-order curve sensitivities (waves), compute
 every curve node, on the Bank of England SONIA OIS curve (see [docs/BOE_CURVE.md](docs/BOE_CURVE.md); the data
 are the Bank's copyright and are not redistributed). In keeping with that licence this repository reports timings,
 ratios and agreement between methods only: no rates and no rate-derived values (quotes, present values, hedge
-notionals or rate sensitivities). The committed `examples/benchmark/rfr_curves.txt` is an invented placeholder
-that lets the tests and examples run without third-party data; the numbers below were not produced with it.
+notionals or rate sensitivities). No curve data is committed: the build writes a synthetic flat curve into each example's build directory so the
+tests and smoke runs work without third-party data; the numbers below were not produced with it.
 Raw output for every number below is in [`benchmarks/results/i7-12700K/`](benchmarks/results/i7-12700K/) and
 [`benchmarks/results/i7-12700K_pinned/`](benchmarks/results/i7-12700K_pinned/).
 

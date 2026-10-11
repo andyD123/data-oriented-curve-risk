@@ -160,6 +160,17 @@ function(ladder_example name dir src)
 endfunction()
 
 if(LADDER_BUILD_EXAMPLES)
+  # The example programs read rfr_curves.txt from their build directory. No curve data is committed: write a
+  # synthetic flat curve there (tests and smoke runs only; never overwrites a file you placed there, e.g. a
+  # curve built from the Bank of England data, see docs/BOE_CURVE.md).
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  foreach(_dir benchmark benchmark_paper aggregation)
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/examples/${_dir}")
+    if(Python3_Interpreter_FOUND AND NOT EXISTS "${CMAKE_BINARY_DIR}/examples/${_dir}/rfr_curves.txt")
+      execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/examples/benchmark/make_rfr_curves_boe.py"
+        --flat 0.03 --out "${CMAKE_BINARY_DIR}/examples/${_dir}/rfr_curves.txt" OUTPUT_QUIET)
+    endif()
+  endforeach()
   if(LADDER_DUAL_ISA)
     ladder_example(bench_library_avx2 benchmark bench.cpp ladder_avx2)
     ladder_example(bench_library_avx512 benchmark bench.cpp ladder_avx512)

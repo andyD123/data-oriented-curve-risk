@@ -1,6 +1,6 @@
 # benchmark_paper: adjoint comparison, write-only reference, LRU date cache
 
-Supporting benchmarks for the paper. They read the RFR curve in `rfr_curves.txt` from the working directory (30 + 36 forward buckets; the committed file is an invented placeholder, and the published results used a copy built from the Bank of England SONIA curve, see docs/BOE_CURVE.md). All results quoted here are in
+Supporting benchmarks for the paper. They read the RFR curve in `rfr_curves.txt` from the working directory (30 + 36 forward buckets; the build writes a synthetic flat curve for tests, and the published results used the Bank of England SONIA curve, see docs/BOE_CURVE.md). All results quoted here are in
 [`benchmarks/results/i7-12700K/`](../../benchmarks/results/i7-12700K/): one thread, Intel
 i7-12700K (AVX2, no AVX-512), GCC 13.3, unpinned. The headline 500,000-instrument benchmark is
 `../benchmark/bench.cpp` (`bench_library`); see [BENCHMARKS.md](../../BENCHMARKS.md).

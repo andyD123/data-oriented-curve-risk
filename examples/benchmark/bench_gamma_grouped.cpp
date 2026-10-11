@@ -55,7 +55,7 @@ int main(int argc,char** argv)try {
     const size_t N=argc>1?parse(argv[1],1,1000000):500000;
     const int reps=static_cast<int>(argc>2?parse(argv[2],1,31):5);
     Curve cd,cp;
-    load_curves(argc>3?argv[3]:"examples/benchmark/rfr_curves.txt",cd,cp);
+    load_curves(argc>3?argv[3]:"rfr_curves.txt",cd,cp);
     const int Kd=cd.S.K(),Kp=cp.S.K();
     auto df=[&](double t){return cd.df(t);};
     auto pf=[&](double t){return cp.df(t);};

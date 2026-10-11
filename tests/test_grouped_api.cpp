@@ -1,4 +1,4 @@
-// Checked grouped API and borrowing contracts, without QuantLib.
+// Checked grouped API and borrowing contracts.
 // Compare to unchanged raw-pointer kernel contracts and exercise failures
 // before any unsafe loads or writes.
 #include "ladder/aligned_memory.hpp"

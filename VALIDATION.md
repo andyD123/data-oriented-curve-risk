@@ -52,7 +52,7 @@ floating-point overflow is not a guaranteed domain.
 
 ## Scope
 
-- The published benchmarks and reconciliation use the Bank of England SONIA curve (docs/BOE_CURVE.md); the committed `rfr_curves.txt` is an invented placeholder. The reconciliation quotes are implied by a fitted curve, so it is a self-consistency check, not a market test. Fixed-base wave
+- The published benchmarks and reconciliation use the Bank of England SONIA curve (docs/BOE_CURVE.md); no curve data is committed (the build writes a synthetic flat curve for tests and smoke runs). The reconciliation quotes are implied by a fitted curve, so it is a self-consistency check, not a market test. Fixed-base wave
   bumps must not be confused with quote bumps plus a full re-bootstrap, and curve reference dates must be converted
   explicitly.
 - Timings are in [BENCHMARKS.md](BENCHMARKS.md) with raw output in `benchmarks/results/`. They are single-machine,

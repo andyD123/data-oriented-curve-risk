@@ -1,7 +1,7 @@
 #include "../example_dir.hpp"
 #include "ladder/aligned_memory.hpp"
 // Two-curve bucketed-risk benchmark on the curves of the market multi-curve dataset
-// (node discount factors in rfr_curves.txt).
+// (node discount factors in rfr_curves.txt, written by make_rfr_curves_boe.py).
 //   BASE  bump-and-reprice: AoS instruments, virtual npv, central differences on every stencil of both curves
 //   SCAN  scalar reverse scan per instrument (ladder/scan.hpp) on unit cashflows
 //   GRP   eight instruments per vector, shared date table, streaming output (ladder/scan_simd.hpp)

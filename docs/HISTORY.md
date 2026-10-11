@@ -4,9 +4,9 @@ See [BENCHMARKS.md](../BENCHMARKS.md) and [PAPER_EVIDENCE.md](PAPER_EVIDENCE.md)
 
 - Earlier timing records from a different workload and input were removed. All current timings are in
   `benchmarks/results/` and were produced from the source in this repository.
-- Curve input: `examples/benchmark/rfr_curves.txt` (and its copy in `examples/benchmark_paper/`) is an invented
-  placeholder par OIS bootstrap (`examples/benchmark/make_rfr_curves.py`); the projection block carries the same curve,
-  as in a one-curve RFR market. It is not a market snapshot.
+- Curve input: no curve data is committed. `examples/benchmark/make_rfr_curves_boe.py` builds `rfr_curves.txt` from the
+  Bank of England SONIA curve, or a synthetic flat curve with `--flat` (which the build uses for tests); the
+  projection block carries the same curve, as in a one-curve RFR market.
 - Linux GCC configurations were executed. Windows/MSVC and Apple/ARM were not, so no portability claim is made
   for them.
 - Output units: first derivatives per unit additive instantaneous-forward shift, matching the paper. Output
