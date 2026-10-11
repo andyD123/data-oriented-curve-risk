@@ -1,6 +1,6 @@
 # data-oriented-curve-risk: Ultra-Fast Data-Oriented Curve Risk
 
-> **~1,100× faster than bump-and-reprice** on a 500,000-instrument book (1.5 ns per sensitivity, single thread, AVX-512; historical run, current-source rerun pending, see [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats). Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
+> **764× faster than bump-and-reprice** on a 500,000-instrument book (0.95 ns per sensitivity, single thread, AVX2, Intel i7-12700K; 52× for the scalar scan alone). See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
 
 Companion sources for **"Breaking the Memory Wall in Rates Risk: Data-Oriented Design and the Reverse Scan Algorithm"** (Andrew Drakeford & Lars Schouw, October 2026).
 The library computes first-order sensitivity to interval-forward **waves** (Hagan box stencils). The contribution here is data-oriented organisation: shared dates, grouped instruments, deal-axis SIMD, streaming non-temporal stores, and reverse suffix scans.
@@ -121,4 +121,4 @@ See `VALIDATION.md` for the checks actually performed and verification suites.
 
 ## Evidence
 
-Validation: [VALIDATION.md](VALIDATION.md). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md). Claim-to-code mapping: [docs/PAPER_EVIDENCE.md](docs/PAPER_EVIDENCE.md). Historical records and unit notes: [docs/HISTORY.md](docs/HISTORY.md).
+Validation: [VALIDATION.md](VALIDATION.md). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md). Claim-to-code mapping: [docs/PAPER_EVIDENCE.md](docs/PAPER_EVIDENCE.md). Provenance and unit notes: [docs/HISTORY.md](docs/HISTORY.md).

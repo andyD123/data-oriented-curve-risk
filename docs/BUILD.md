@@ -48,7 +48,7 @@ copies the bundled data, so CLion runs need no working-directory setting. Invali
 missing/malformed data and failed numerical comparisons return a non-zero exit code.
 
 All shipped `CMakePresets.json` profiles **build Release binaries**: `release`,
-`release-avx512`, `release-avx2`, `release-portable` and `release-paper`.
+`release-avx512`, `release-avx2` and `release-portable`.
 The configure presets set both `CMAKE_BUILD_TYPE=Release` (single-configuration generators)
 and `CMAKE_CONFIGURATION_TYPES=Release` (multi-configuration generators). Every build
 preset explicitly selects `configuration: Release`, equivalent to `--config Release`;
@@ -69,29 +69,21 @@ compiler may fuse `a*b+c` into one FMA. Contraction changes rounding in the last
 compiler chooses where to apply it, so results agree across compilers to tolerance, not bit for bit:
 `test_ladder_avx2` / `test_ladder_avx512`, `test_boundaries_avx2` / `test_boundaries_avx512`,
 `bench_library_avx2` / `bench_library_avx512`. The scalar examples (`aggregation`,
-`scan_wave`) are built once. `release` also builds the LRU date
-cache example `scenario_bench` with the AVX-512 variant, on any compiler including MSVC. With
-GCC/Clang and `<experimental/simd>`, it also builds the AVX-512 paper benchmarks
-(`bench_paper`, `adjoint_bench`); with other compilers they are skipped with a message.
+`scan_wave`) are built once. The adjoint comparison (`adjoint_bench`), the
+write-only reference (`write_floor`) and the LRU date-cache example (`scenario_bench`) are built as well
+(`scenario_bench` uses the AVX-512 variant under dual ISA).
 Configure checks whether the build host can execute AVX-512: both variants
 are always built, but on a host without AVX-512 CTest runs only the `_avx2` tests and the
 `_avx512` binaries must not be run there. The equivalent cache settings are
 `-DLADDER_LANES=AVX2 -DLADDER_DUAL_ISA=ON`.
 
 The single-ISA presets are unchanged: `release-avx512`, `release-avx2`, `release-portable`
-(no intrinsics; use it when neither AVX2 nor AVX-512 is wanted) and `release-paper`. No extra
+(no intrinsics; use it when neither AVX2 nor AVX-512 is wanted). No extra
 `-DCMAKE_BUILD_TYPE=Release` or `--config Release` is needed: the presets supply them.
 In CLion, reload CMake after pulling and enable the `release` profile; the shared run
 configurations in `.run/` name the `release` targets, including both ISA variants.
-WSL or MinGW with GCC 13+/libstdc++ is the route for `bench_paper` and `adjoint_bench` on Windows.
-Under MSVC those two are not built, so their CLion configurations (`bench_paper 100k quick`,
-`bench_paper 500k (paper section 9)` and `adjoint_bench 500k`) show as missing targets.
 Explicit Debug builds can still be configured separately for diagnosis; they are not part
 of the shipped presets.
-
-The historical `bench_paper` target retains its earlier input-handling and comparison
-assumptions. The refactored `scenario_bench` and `adjoint_bench` have explicit numerical gates;
-this does not retroactively certify historical timing records.
 
 `scan_wave [data-and-output-directory]` optionally selects a separate replay directory;
 its no-argument CLion run uses build-directory copies. The CTest replay always selects

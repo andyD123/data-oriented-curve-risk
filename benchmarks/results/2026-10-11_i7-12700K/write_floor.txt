@@ -1,0 +1,4 @@
+write_floor 273504000 15, three consecutive runs
+write-only stores: 8.644 ms, 31.64 GB/s
+write-only stores: 8.319 ms, 32.88 GB/s
+write-only stores: 8.297 ms, 32.97 GB/s

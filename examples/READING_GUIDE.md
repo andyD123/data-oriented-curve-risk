@@ -39,7 +39,7 @@ to let the second fetch overwrite the first column. The 64-column example is unc
 The scenario columns are contiguous `std::vector<double>` storage; this code does not
 claim that the allocator provides 64-byte alignment.
 
-## Scan, direct overlap and recorded reverse mode
+## Scan, direct overlap and reverse mode with a tape
 
 [`benchmark_paper/adjoint_bench.cpp`](benchmark_paper/adjoint_bench.cpp) names each
 operation separately: `make_risk_records`, `scan_gradient`, `direct_gradient`,
@@ -64,13 +64,3 @@ The default remains 100,000 instruments and 66 values each. The default hierarch
 contains 200 books of 500 instruments, then 20 desks of 10 books. An optional smaller
 instrument count is useful for tests. Clearing and rebuilding the result containers
 remains inside the timed operations.
-
-## What this pass does not change
-
-`ladder/`, recorded `.txt` and `.svg` evidence, `bench_paper.cpp`, the seasoned library
-benchmark and the reference harnesses are unchanged. Their further presentation work
-is not claimed complete. The historical headline executable still has its own
-integrated-forward units; this readability edit does not resolve that separate issue.
-
-No new benchmark framework or runtime type-erased callback layer is introduced.
-The support functions and expression lambdas are ordinary C++ templates.

@@ -1,28 +1,22 @@
 # Paper claim -> code and evidence
 
-This page distinguishes **current executable checks** from **historical timing records**.
-Do not combine rows from different machines/runs into one benchmark table.
+Every benchmark number in the paper comes from the committed raw output in
+[`benchmarks/results/2026-10-11_i7-12700K/`](../benchmarks/results/2026-10-11_i7-12700K/) (one machine, one day,
+no AVX-512). Do not combine rows from different machines or runs into one table.
 
-| Claim | Current command / source | Evidence status |
+| Claim | Command / source | Evidence |
 |---|---|---|
-| Box-wave derivative, capped/open terminal wave | `ctest --preset release` | Current independent-oracle tests. |
-| Scalar discount scan is O(N+K) once records are sorted | `ladder/scan.hpp` | Current implementation uses monotone forward/backward boundary cursors. |
-| Scenario date cache is correct | `scenario_bench 2000 1 1` / CTest | Current gated comparison with scalar scan. |
-| 500k headline workload shape: 3,540 dates, 64,034 groups | `recorded_500k.txt` | Historical raw record. |
-| Historical 50.91 ms / 1,128x result | `recorded_500k.txt` | Historical Sapphire Rapids VM timing. That source emitted interval-integrated-forward theta units. Current `bench_paper.cpp` emits rate-shift delta units; rerun before assigning a new timing to current source. |
-| Current rate-unit paper kernel gate | `bench_paper 2000 1 1`, CTest | Normal and streaming outputs checked separately against scan and baseline. |
-| Fresh 500k rate-unit smoke | `recorded_2026-10-06_rate_units_500k.txt` | Unpinned cloud validation, not publication timing. |
-| Adjoint mechanism | `adjoint_bench`, CTest | Current scan/direct/tape comparison gate. |
-| Historical 431/726/8784 ms adjoint row | paper/README values | Original raw timing log has not been recovered. |
-| Fresh 500k adjoint check | `recorded_2026-10-06_adjoint_500k.txt` | Current cloud validation, separate from historical values. |
-| Schedule ordering reduces cache misses | `scenario_bench`, `recorded_lru_*` | Reproducible miss counts. Fresh current record is `recorded_2026-10-06_lru_500k_rate_units.txt`. The manuscript 10,921/1,310 ms pair is still not tied to a committed raw run. |
-| Historical write-only comparison | 270 MiB / 15.7 ms | Original source/log is not currently in the repository. |
-| Current exact-size write reference | `write_floor`, `recorded_2026-10-06_write_floor.txt` | Reproducible current source, different host, not publication timing. |
-| Eight-instrument wave reconciliation | `scan_wave`, CTest replay | Recorded reference replay is current. |
-| RFR hedge reconciliation | `python3 examples/rfr_reconcile/rfr_reference.py check <dir>` | 15 illustrative par-OIS hedges; see the example README. |
+| Box-wave derivative, capped/open terminal wave | `ctest --preset release` | Oracle-based tests. |
+| Scalar discount scan is O(N+K) once records are sorted | `ladder/scan.hpp` | Monotone forward/backward boundary cursors. |
+| 500k book: BASE, SCAN, GRP, write-only comparison | `bench_library 500000 1 3`, `write_floor` | `bench_library_avx2_500k.txt`, `write_floor.txt` |
+| Working set and lane occupancy | `bench_library N 0 5` | `working_set_sweep_avx2.txt` |
+| Adjoint comparison (scan, direct N·K, tape) | `adjoint_bench 500000 2` | `adjoint_bench_500k.txt`; CTest `adjoint_demo_smoke`. |
+| Aggregation: contiguous vs maps | `aggregation 100000` | `aggregation_100k.txt` |
+| Date-cache ordering effect | `scenario_bench` | `scenario_bench_100k.txt` |
+| RFR wave and hedge reconciliation | `python3 examples/rfr_reconcile/rfr_reference.py check <dir>`; CTest `rfr_reconcile_replay` | 15 illustrative par-OIS hedges; see the example README. |
+| Cross-gamma | `ctest -R gamma`, `bench_cross_gamma` | [CROSS_GAMMA.md](CROSS_GAMMA.md) |
 
 ## Publication rule
 
-A timing in the paper should name the exact recorded file or frozen release that supports it. If a source change
-alters the timed calculation, including output-unit scaling, retain old timings as historical records and generate
-a new timing rather than silently relabelling them.
+A timing in the paper should name the exact result file that supports it. If a source change alters the timed
+calculation, regenerate the timing instead of relabelling an old one.

@@ -2,7 +2,6 @@ build*/
 cmake-build-*/
 .idea/
 stash/
-examples/**/bench_paper
 examples/**/scenario_bench
 examples/**/adjoint_bench
 examples/**/bench

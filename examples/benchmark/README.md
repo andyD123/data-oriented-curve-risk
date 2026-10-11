@@ -5,13 +5,10 @@ Schedules are walked back from the last regular payment date with a random remai
 the grouping key is (type, maturity day) and groups mix seasoned and new trades on the same grid.
 
 ```
-g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -ffp-contract=fast -I../.. -Wno-unused-result bench.cpp -o bench
-./bench 500000 0 3        # N, run bump-and-reprice baseline (needs ~1 GB more at 500k), repetitions
+g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result bench.cpp -o bench
+./bench 500000 1 3        # N, run bump-and-reprice baseline (needs ~1 GB more at 500k), repetitions
 ```
-Recorded on one Sapphire Rapids core (2.1 GHz, VM):
-- `recorded_500k_seasoned.txt`: 500k, 96.5% lane occupancy, streaming stores 51.1 ms (1.55 ns/sensitivity), normal 65.3 ms,
-  grouped vs scalar 3.4e-15.
-- `recorded_200k_seasoned_with_baseline.txt`: 200k with the bump-and-reprice baseline, 14,913 ms vs 21.7 ms streaming (688x).
-
-The paper's §9 headline (unseasoned bonds + vanilla swaps, 50.9 ms) is `../benchmark_paper`; this example is the library
-form on a different book and is reported separately.
+Results on an Intel i7-12700K (AVX2, no AVX-512), GCC 13.3, one thread, are in
+[BENCHMARKS.md](../../BENCHMARKS.md) and `benchmarks/results/2026-10-11_i7-12700K/`: at 500k instruments the baseline takes
+24,045 ms per curve update, the scalar scan 458.5 ms and the grouped kernel 31.5 ms (764x; 96.5% lane occupancy;
+grouped vs scalar 3.6e-15).

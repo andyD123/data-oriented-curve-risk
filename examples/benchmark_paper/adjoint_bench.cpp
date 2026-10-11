@@ -1,7 +1,7 @@
 // Compare the library scan, direct overlap summation and an illustrative tape.
 // Each computes first derivatives per unit forward-rate shift. Record preparation
 // is outside the timings; the direct and tape implementations remain independent
-// of the library's scan traversal. Historical results are not rerun by this edit.
+// of the library's scan traversal.
 #include "../example_dir.hpp"
 #include "../support/curve_input.hpp"
 #include "../support/input.hpp"
