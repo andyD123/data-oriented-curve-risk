@@ -4,6 +4,18 @@ This page is an index to the repository's *different* performance experiments. E
 
 **Units:** the library's current forward-wave derivatives are per unit additive instantaneous-forward-rate shift. The archived paper `recorded_500k.txt` executable instead emitted interval-integrated-forward (`theta`) sensitivities, related by wave widths. Its timing has **not** been reassigned to the current `bench_paper.cpp` source.
 
+## Runnable reader comparisons
+
+For each claim in the joint-author article, readers can execute the corresponding baseline and optimised method from `examples/`. The [paper comparison driver](examples/benchmark_paper/run_comparisons.py) coordinates existing programs and their numerical gates. On an AVX-512 GCC/Clang machine with C++20 and CMake, from the repository root:
+
+```sh
+python3 examples/benchmark_paper/run_comparisons.py --suite all            # 2,000 instruments; quick comparison
+python3 examples/benchmark_paper/run_comparisons.py --suite all --full     # 500,000 instruments; expensive
+python3 examples/benchmark_paper/run_comparisons.py --suite write-floor --full
+```
+
+`paper` directly compares repricing, scalar scan and SIMD on its generated book; `cache` compares scenario-cache orderings; `adjoint` compares direct overlaps against the scan (plus an explicitly nonrepresentative taped prototype); and `aggregation` checks contiguous versus associative data structures. In the full combined suite, aggregation defaults to 100,000 instruments to avoid excessive associative-map memory use; paper, cache and adjoint retain 500,000. Use `--aggregation-instruments N` to change only that case. Outputs and machine/source provenance are saved under `build/paper-comparisons/reader-results/`. The `write-floor` comparator measures only output streaming stores, not a full memory copy or an input-reading risk calculation. **Do not combine runtimes from different suites to manufacture an incremental speedup ladder.** The historical `theta`/current rate-derivative distinction described above still applies.
+
 ## First-order paper workload: 500,000 instruments
 
 [Raw recorded result](examples/benchmark_paper/recorded_500k.txt) and [complete example/methodology](examples/benchmark_paper/README.md). One Sapphire Rapids virtualised core, AVX-512; half fixed bonds and half vanilla swaps, approximately 37.5 cashflows per instrument, 30 discount and 36 projection waves, 64,034 padded groups.

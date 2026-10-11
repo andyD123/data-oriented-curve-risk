@@ -1,5 +1,10 @@
 # Reading the demonstrators
 
+## Reproduce the article's comparisons
+
+Start with [`benchmark_paper/run_comparisons.py`](benchmark_paper/run_comparisons.py): from the repository root, run `python3 examples/benchmark_paper/run_comparisons.py --suite all`. It builds the existing paper, scenario-cache, adjoint and aggregation executables, runs small matched-input comparisons, checks their numerical output and saves raw logs and a source/machine manifest. Use `--full` only for the much heavier 500,000-instrument run. See the [paper benchmark guide](benchmark_paper/README.md#reader-run-comparisons-from-the-article) for ISA/toolchain requirements and scope limits.
+
+
 ## Start here for first-order curve risk
 
 [The minimal curve example](curve_intro/README.md) shows
