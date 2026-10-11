@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'ladder/cross_gamma.hpp'
+      - 'ladder/scan_gamma_grouped.hpp'
+      - 'tests/test_gamma_grouped.cpp'
+      - 'examples/benchmark/bench_gamma_grouped.cpp'
       - 'tests/test_cross_gamma.cpp'
       - 'tests/test_cross_gamma_quantlib_archive.cpp'
       - 'examples/cross_gamma/**'
@@ -15,11 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure portable cross-gamma and reader example
-        run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF
+        run: cmake -S . -B build-cross-gamma -DCMAKE_BUILD_TYPE=Release -DLADDER_LANES=PORTABLE -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF -DLADDER_BUILD_GAMMA_BENCHMARK=ON
       - name: Build targeted gamma and example executables
-        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive cross_gamma_example --parallel 2
+        run: cmake --build build-cross-gamma --target test_cross_gamma test_cross_gamma_quantlib_archive test_gamma_grouped cross_gamma_example bench_gamma_grouped --parallel 2
+      - name: Smoke-check opt-in gamma benchmark on 2000 mixed instruments
+        run: ./build-cross-gamma/examples/benchmark/bench_gamma_grouped 2000 1 ./examples/benchmark/quantlib_example_curves.txt
       - name: Check fixed, QuantLib-archive, worked-example and offline algebra
-        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^cross_gamma'
+        run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped)'
   full-repository:
     name: Full existing suite (${{ matrix.backend }})
     runs-on: ubuntu-24.04
