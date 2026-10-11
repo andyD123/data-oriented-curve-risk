@@ -18,6 +18,7 @@ option(LADDER_BUILD_EXAMPLES "Build library, aggregation and wave replay example
 option(LADDER_BUILD_PAPER_BENCHMARKS "Build historical paper benchmarks (requires x86 AVX-512)" OFF)
 option(LADDER_BUILD_WIDE_GROUP_EXPERIMENT "Build experimental variable-width schedule-group benchmark" OFF)
 option(LADDER_BUILD_GAMMA_BENCHMARK "Build optional 500k grouped gamma benchmark" OFF)
+option(LADDER_BUILD_REDUCE_BENCHMARK "Build optional portfolio-first-order reduction benchmark" OFF)
 option(LADDER_DUAL_ISA "Build the vectorised tests and benchmarks twice, as _avx2 and _avx512 targets (x86)" OFF)
 set(LADDER_BUILD_QUANTLIB "AUTO" CACHE STRING "QuantLib generators: AUTO, ON, OFF")
 set_property(CACHE LADDER_BUILD_QUANTLIB PROPERTY STRINGS AUTO ON OFF)
@@ -131,6 +132,9 @@ if(BUILD_TESTING)
   add_executable(test_gamma_grouped tests/test_gamma_grouped.cpp)
   target_link_libraries(test_gamma_grouped PRIVATE ladder)
   add_test(NAME gamma_grouped COMMAND test_gamma_grouped)
+  add_executable(test_grouped_reduce tests/test_grouped_reduce.cpp)
+  target_link_libraries(test_grouped_reduce PRIVATE ladder)
+  add_test(NAME grouped_reduce COMMAND test_grouped_reduce)
   if(LADDER_DUAL_ISA)
     foreach(_lc avx2 avx512)
       foreach(_t ladder boundaries)
@@ -178,7 +182,12 @@ if(LADDER_BUILD_EXAMPLES)
   endif()
   ladder_example(aggregation aggregation agg.cpp)
   ladder_example(scan_wave hagan_waves scan_wave.cpp)
+  # Preserve Hagan/QuantLib replay; add the independent RFR demonstration.
+  ladder_example(scan_rfr rfr_reconcile scan_wave.cpp)
   ladder_example(cross_gamma_example cross_gamma cross_gamma_example.cpp)
+  if(LADDER_BUILD_REDUCE_BENCHMARK)
+    ladder_example(bench_grouped_reduce benchmark bench_grouped_reduce.cpp)
+  endif()
   if(LADDER_BUILD_GAMMA_BENCHMARK)
     ladder_example(bench_gamma_grouped benchmark bench_gamma_grouped.cpp)
   endif()
@@ -186,6 +195,11 @@ if(LADDER_BUILD_EXAMPLES)
     add_test(NAME cross_gamma_example_smoke COMMAND cross_gamma_example)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+      add_test(NAME rfr_reconcile_replay
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py"
+          "$<TARGET_FILE:scan_rfr>"
+          "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
       add_test(NAME cross_gamma_quantlib_offline
         COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_CURRENT_SOURCE_DIR}/examples/cross_gamma/quantlib/live_ois_cross_gamma.py"
