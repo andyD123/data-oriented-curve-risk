@@ -2,9 +2,10 @@
 
 ## Implementation
 
-The new [eight-lane gamma header](../ladder/scan_gamma_grouped.hpp) uses
-the current GroupLayout, SIMD primitives and refreshed DateTable **without
-changing either first-order scan**.
+The [eight-lane gamma header](../ladder/scan_gamma_grouped.hpp) uses
+the [grouped data model](GROUPED_DATA_FLOW.md), SIMD primitives and
+refreshed DateTable. Gamma remains a separate optional pass and does
+not add work to the first-order scan.
 
 It adds:
 - GroupGammaScratch, retained across groups and curve updates (one instance
