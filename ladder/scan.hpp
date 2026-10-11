@@ -3,6 +3,7 @@
 //   discount ladder:    d PV / d delta_k = -( sum_{in k} x_i * (t_i - B[k-1])  +  len(k) * sum_{t_i >= B[k]} x_i )
 //   projection ladder:  d PV / d delta_k = sum_terms w * (psi_k(a) - psi_k(b))    (bounded tails cancel; the open final wave retains w*(b-a))
 #include <algorithm>
+#include <limits>
 #include <span>
 #include <vector>
 #include "stencil.hpp"
@@ -10,13 +11,24 @@
 
 namespace ladder {
 
+// Reuse across instruments. One instance per caller; not shared across threads.
+struct DiscountScanScratch {
+    std::vector<double> interior, suffix;
+    void prepare(int K) {
+        interior.assign(static_cast<size_t>(K) + 1, 0.0);
+        suffix.assign(static_cast<size_t>(K) + 1, 0.0);
+    }
+};
+
 // cashflows must be sorted by t ascending. out has K entries.
-inline void scan_discount(const Stencils& S, std::span<const UnitCashflow> cf, double* out)
+inline void scan_discount(const Stencils& S, std::span<const UnitCashflow> cf, DiscountScanScratch& scratch, double* out)
 {
     S.validate();
     if (!out) throw std::invalid_argument("scan_discount: null output");
     const int K = S.K(); const double BK = S.B[K];
-    std::vector<double> interior(K + 1, 0.0), suffix(K + 1, 0.0);
+    scratch.prepare(K);
+    auto& interior = scratch.interior;
+    auto& suffix = scratch.suffix;
     // forward pass: interior term. A cashflow at or beyond B[K] belongs to the tail of every stencil up to K;
     // for stencil K it is either tail mass (capped last stencil) or interior with uncapped weight (open last stencil).
     double previous = -std::numeric_limits<double>::infinity();
@@ -41,6 +53,12 @@ inline void scan_discount(const Stencils& S, std::span<const UnitCashflow> cf, d
     while (k >= 1) { suffix[k] = running; --k; }
     for (int kk = 1; kk < K; ++kk) out[kk-1] = -(interior[kk] + S.len(kk) * suffix[kk]);
     out[K-1] = -(interior[K] + (S.open_last ? 0.0 : S.len(K)) * suffix[K]);
+}
+
+inline void scan_discount(const Stencils& S, std::span<const UnitCashflow> cf, double* out)
+{
+    DiscountScanScratch scratch;
+    scan_discount(S, cf, scratch, out);
 }
 
 inline void scan_projection(const Stencils& S, std::span<const ProjectionTerm> terms, double* out)

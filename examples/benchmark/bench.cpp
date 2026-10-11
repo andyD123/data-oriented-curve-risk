@@ -18,6 +18,10 @@
 #include <vector>
 #include <thread>
 #include <algorithm>
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 #include "ladder/stencil.hpp"
 #include "ladder/scan.hpp"
 #include "ladder/replicate.hpp"
@@ -65,7 +69,7 @@ struct Swap : Instrument { std::vector<FixedFlow> fixed; std::vector<FloatFlow> 
     double npv(const Curve& d, const Curve& p) const override { double s = 0;
         for (auto& c : fixed) s += c.amount * d.df(c.day / DPY);
         for (auto& f : flt) s += f.scale * (p.df(f.a_day / DPY) / p.df(f.b_day / DPY) - 1.0) * d.df(f.pay_day / DPY);
-        for (auto& o : ois) s += o.N * (d.df(o.a_day / DPY) / d.df(o.b_day / DPY) - 1.0) * d.df(o.pay_day / DPY);
+        for (auto& o : ois) s += o.N * (o.realised * d.df(o.a_day / DPY) / d.df(o.b_day / DPY) - 1.0) * d.df(o.pay_day / DPY);
         return s; } };
 
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -150,22 +154,64 @@ int main(int argc, char** argv) try
     auto replicate_all = [&]() { for (size_t i = 0; i < N; ++i) { ucf[i].clear(); pt[i].clear();
         for (auto& c : book[i].fixed) replicate_fixed(c.amount, c.day / DPY, df, ucf[i]);
         for (auto& f : book[i].flt) replicate_ibor(f.scale, f.a_day / DPY, f.b_day / DPY, f.pay_day / DPY, df, pf, ucf[i], pt[i]);
-        for (auto& o : book[i].ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, ucf[i]);
+        for (auto& o : book[i].ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, ucf[i], o.realised);
         sort_by_time(ucf[i]); } };
     replicate_all(); double t_rep = now_ms() - t0;
     std::vector<double> sd(N * Kd), sp(N * Kp); double best_scan = 1e30;
-    for (int r = 0; r < reps; ++r) { t0 = now_ms(); for (size_t i = 0; i < N; ++i) { scan_discount(cd.S, ucf[i], &sd[i * Kd]); scan_projection(cp.S, pt[i], &sp[i * Kp]); } best_scan = std::min(best_scan, now_ms() - t0); }
+    for (int r = 0; r < reps; ++r) {
+        t0 = now_ms();
+        DiscountScanScratch scratch;
+        for (size_t i = 0; i < N; ++i) { scan_discount(cd.S, ucf[i], scratch, &sd[i * Kd]); scan_projection(cp.S, pt[i], &sp[i * Kp]); }
+        best_scan = std::min(best_scan, now_ms() - t0);
+    }
     double best_rep = 1e30; for (int r = 0; r < reps; ++r) { t0 = now_ms(); replicate_all(); best_rep = std::min(best_rep, now_ms() - t0); }
 
     // ---- GRP
-    t0 = now_ms(); GroupLayout L = build_layout(book, DPY); double t_layout = now_ms() - t0;
+    int group_lanes = LANES;
+    if (const char* env = std::getenv("LADDER_GROUP_LANES")) group_lanes = std::max(LANES, std::atoi(env));
+    t0 = now_ms(); GroupLayout L = build_layout(book, DPY, group_lanes); double t_layout = now_ms() - t0;
     double best_tab = 1e30, best_n = 1e30, best_s = 1e30;
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); refresh_table(L, cd.S, cp.S, df, pf); best_tab = std::min(best_tab, now_ms() - t0); }
-    double* out = (double*)ladder::allocate_aligned(L.groups.size() * L.stride(Kd, Kp) * sizeof(double));
+    const size_t out_n = L.output_doubles(Kd, Kp);
+    double* out = (double*)ladder::allocate_aligned(out_n * sizeof(double));
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::normal>(L, cd.S, cp.S, out); best_n = std::min(best_n, now_ms() - t0); }
     for (int r = 0; r < reps; ++r) { t0 = now_ms(); scan_grouped<Store::streaming>(L, cd.S, cp.S, out); best_s = std::min(best_s, now_ms() - t0); }
-    if (const char* env = std::getenv("LADDER_THREADS")) {   // e.g. LADDER_THREADS=1,2,4,8: split groups across threads
+    if (const char* env = std::getenv("LADDER_PHASES")) {   // attribute the kernel; not part of the published tables
+        (void)env;
+        auto time_part = [&](ScanPart part) {
+            double best = 1e30;
+            for (int r = 0; r < reps; ++r) {
+                t0 = now_ms();
+                scan_grouped_part<Store::streaming>(part, L, cd.S, cp.S, out);
+                best = std::min(best, now_ms() - t0);
+            }
+            return best;
+        };
+        const double t_amt = time_part(ScanPart::amounts);
+        const double t_disc = time_part(ScanPart::discount);
+        const double t_proj = time_part(ScanPart::projection);
+        std::printf("\nkernel phases (streaming, best of %d; discount and projection each include their own amount formation)\n", reps);
+        std::printf("  amounts only            %9.2f ms\n", t_amt);
+        std::printf("  discount walk           %9.2f ms\n", t_disc);
+        std::printf("  projection walk         %9.2f ms\n", t_proj);
+        scan_grouped<Store::streaming>(L, cd.S, cp.S, out);   // restore a full result for the checks below
+    }
+    if (const char* env = std::getenv("LADDER_THREADS")) {   // e.g. LADDER_THREADS=1,2,4,8
+        std::vector<int> cpus;
+        if (const char* list = std::getenv("LADDER_THREAD_CPUS")) {
+            std::string s(list); size_t pos = 0;
+            while (pos < s.size()) {
+                size_t comma = s.find(',', pos); if (comma == std::string::npos) comma = s.size();
+                cpus.push_back(std::atoi(s.substr(pos, comma - pos).c_str())); pos = comma + 1;
+            }
+        }
         std::printf("\nthread scaling (streaming kernel, groups split into equal contiguous ranges, best of %d)\n", reps);
+        if (cpus.empty()) std::printf("  workers are not pinned inside the process; the output rate below is bytes of sensitivity output, not a memory-controller counter\n");
+        else {
+            std::printf("  worker i is pinned to LADDER_THREAD_CPUS[i %% %zu]:", cpus.size());
+            for (int c : cpus) std::printf(" %d", c);
+            std::printf("\n  the rate below is bytes of sensitivity output written, not a memory-controller counter\n");
+        }
         std::string list(env); size_t pos = 0;
         while (pos < list.size()) {
             size_t comma = list.find(',', pos); if (comma == std::string::npos) comma = list.size();
@@ -173,11 +219,23 @@ int main(int argc, char** argv) try
             double best = 1e30;
             for (int r = 0; r < reps; ++r) {
                 t0 = now_ms(); std::vector<std::thread> pool; size_t G = L.groups.size();
-                for (int t = 0; t < nt; ++t) pool.emplace_back([&, t]{ scan_grouped<Store::streaming>(L, cd.S, cp.S, out, G * t / nt, G * (t + 1) / nt); });
+                for (int t = 0; t < nt; ++t) pool.emplace_back([&, t]{
+#if defined(__linux__)
+                    if (!cpus.empty()) {
+                        cpu_set_t set; CPU_ZERO(&set); CPU_SET(cpus[t % (int)cpus.size()], &set);
+                        pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+                    }
+#else
+                    (void)t;
+#endif
+                    scan_grouped<Store::streaming>(L, cd.S, cp.S, out, G * t / nt, G * (t + 1) / nt);
+                });
                 for (auto& th : pool) th.join();
                 best = std::min(best, now_ms() - t0); }
-            std::printf("  %2d thread%s  %9.2f ms  %7.3f ns per output  %5.2f GB/s written\n", nt, nt == 1 ? " " : "s", best, best * 1e6 / nout, (double)L.groups.size() * L.stride(Kd, Kp) * 8 / best / 1e6);
+            const double bytes = (double)out_n * sizeof(double);
+            std::printf("  %2d thread%s  %9.2f ms  %7.3f ns per output  %5.2f GB/s written\n", nt, nt == 1 ? " " : "s", best, best * 1e6 / nout, bytes / best / 1e6);
         }
+        scan_grouped<Store::streaming>(L, cd.S, cp.S, out);
     }
     double worst = 0; std::vector<double> buf(Kd + Kp);
     for (size_t gi = 0; gi < L.groups.size(); ++gi) for (int l = 0; l < L.groups[gi].n_valid; ++l) { int i = L.groups[gi].inst[l]; gather(L, Kd, Kp, out, (int)gi, l, buf.data());
@@ -185,7 +243,7 @@ int main(int argc, char** argv) try
         for (int k = 0; k < Kd; ++k) worst = std::max(worst, std::fabs(buf[k] - sd[i*Kd+k]) / scale); for (int k = 0; k < Kp; ++k) worst = std::max(worst, std::fabs(buf[Kd+k] - sp[i*Kp+k]) / scale); }
     for (double v : sd) valid = valid && std::isfinite(v);
     for (double v : sp) valid = valid && std::isfinite(v);
-    for (size_t j=0; j<L.groups.size()*L.stride(Kd,Kp); ++j) valid = valid && std::isfinite(out[j]);
+    for (size_t j = 0; j < out_n; ++j) valid = valid && std::isfinite(out[j]);
     valid = valid && std::isfinite(worst) && worst < 1e-9;
 
     // ---- incremental insert (LADDER_INSERT=M): add M new instruments to a copy of the layout without a rebuild
@@ -213,7 +271,7 @@ int main(int argc, char** argv) try
         std::vector<InstrumentSpec> combined = book; combined.insert(combined.end(), extra.begin(), extra.end());
         t0 = now_ms(); GroupLayout L3 = build_layout(combined, DPY); ins_rebuild_ms = now_ms() - t0;
         // correctness: grouped ladder of every inserted instrument against the scalar scan
-        double* out2 = (double*)ladder::allocate_aligned(L2.groups.size() * L2.stride(Kd, Kp) * sizeof(double));
+        double* out2 = (double*)ladder::allocate_aligned(L2.output_doubles(Kd, Kp) * sizeof(double));
         scan_grouped<Store::normal>(L2, cd.S, cp.S, out2);
         std::vector<double> got(Kd + Kp), ref(Kd + Kp);
         for (size_t gi = 0; gi < L2.groups.size(); ++gi) for (int l = 0; l < L2.groups[gi].n_valid; ++l) {
@@ -221,7 +279,7 @@ int main(int argc, char** argv) try
             const InstrumentSpec& in = extra[id - N]; std::vector<UnitCashflow> u; std::vector<ProjectionTerm> pt2;
             for (auto& c : in.fixed) replicate_fixed(c.amount, c.day / DPY, df, u);
             for (auto& f : in.flt) replicate_ibor(f.scale, f.a_day / DPY, f.b_day / DPY, f.pay_day / DPY, df, pf, u, pt2);
-            for (auto& o : in.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, u);
+            for (auto& o : in.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, u, o.realised);
             sort_by_time(u); scan_discount(cd.S, u, ref.data()); scan_projection(cp.S, pt2, ref.data() + Kd);
             gather(L2, Kd, Kp, out2, (int)gi, l, got.data());
             double scale = 1.0; for (double v : ref) scale = std::max(scale, std::fabs(v));
@@ -272,7 +330,7 @@ int main(int argc, char** argv) try
             double s = 0;
             for (size_t j = fo[i]; j < fo[i+1]; ++j) s += fx[j].amount * d.df(fx[j].day / DPY);
             for (size_t j = lo[i]; j < lo[i+1]; ++j) { auto& f = fl[j]; s += f.scale * (p.df(f.a_day / DPY) / p.df(f.b_day / DPY) - 1.0) * d.df(f.pay_day / DPY); }
-            for (size_t j = oo[i]; j < oo[i+1]; ++j) { auto& o = os[j]; s += o.N * (d.df(o.a_day / DPY) / d.df(o.b_day / DPY) - 1.0) * d.df(o.pay_day / DPY); }
+            for (size_t j = oo[i]; j < oo[i+1]; ++j) { auto& o = os[j]; s += o.N * (o.realised * d.df(o.a_day / DPY) / d.df(o.b_day / DPY) - 1.0) * d.df(o.pay_day / DPY); }
             return s; };
         std::vector<double> ad(N * Kd), ap(N * Kp); const double eps = 1e-5;
         t0 = now_ms();
@@ -297,7 +355,7 @@ int main(int argc, char** argv) try
             double s = 0;
             for (size_t j = fo[i]; j < fo[i+1]; ++j) s += fx[j].amount * D[fxi[j]];
             for (size_t j = lo[i]; j < lo[i+1]; ++j) s += fl[j].scale * (P[fli[3*j+1]] / P[fli[3*j+2]] - 1.0) * D[fli[3*j]];
-            for (size_t j = oo[i]; j < oo[i+1]; ++j) s += os[j].N * (D[osi[3*j+1]] / D[osi[3*j+2]] - 1.0) * D[osi[3*j]];
+            for (size_t j = oo[i]; j < oo[i+1]; ++j) s += os[j].N * (os[j].realised * D[osi[3*j+1]] / D[osi[3*j+2]] - 1.0) * D[osi[3*j]];
             return s; };
         std::vector<double> td(N * Kd), tp(N * Kp);
         t0 = now_ms(); fill(Db, cd); fill(Pb, cp);
@@ -315,7 +373,7 @@ int main(int argc, char** argv) try
     std::printf("\nterms\n");
     std::printf("  output            one sensitivity: one instrument against one curve node\n");
     std::printf("  SCAN              reference method: scalar ladder, one instrument at a time\n");
-    std::printf("  GRP               grouped method: 8 instruments at a time, one per SIMD lane\n");
+    std::printf("  GRP               grouped method: %d instruments per schedule group, 8 per SIMD block\n", group_lanes);
     std::printf("  date table        discount and projection factors at each unique payment date, shared by all groups\n");
     std::printf("  per curve update  work that is repeated every time the curves change\n");
     std::printf("  time              wall clock, best of %d run%s\n", reps, reps == 1 ? "" : "s");
@@ -348,8 +406,10 @@ int main(int argc, char** argv) try
 
     std::printf("\nsetup (one-off, not repeated per curve update)\n");
     std::printf("  first replication %.0f ms (includes memory allocation); group layout %.0f ms\n", t_rep, t_layout);
-    std::printf("  %s unique payment dates in the date table; %s groups of 8\n", grouped(L.table.day.size()).c_str(), grouped(L.groups.size()).c_str());
-    std::printf("  lane occupancy %.1f%% (share of SIMD lanes holding a real instrument)\n", 100.0 * live / (L.groups.size() * LANES));
+    size_t blocks = 0; for (auto& g : L.groups) blocks += (size_t)g.blocks;
+    std::printf("  %s unique payment dates in the date table; %s schedule groups, %s SIMD blocks of 8\n",
+                grouped(L.table.day.size()).c_str(), grouped(L.groups.size()).c_str(), grouped(blocks).c_str());
+    std::printf("  lane occupancy %.1f%% (share of SIMD lanes holding a real instrument)\n", 100.0 * live / (blocks * LANES));
     std::printf("  storage %s padded vs %s logical (+%.1f%% for empty lanes)\n", size_text(padded_bytes).c_str(), size_text(logical_bytes).c_str(),
                 100.0 * (padded_bytes / logical_bytes - 1.0));
     ladder::free_aligned(out);

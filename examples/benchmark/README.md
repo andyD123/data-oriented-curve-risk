@@ -11,7 +11,9 @@ the grouping key is (type, maturity day) and groups mix seasoned and new trades 
 g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result bench.cpp -o bench
 ./bench 500000 1 3        # N, run bump-and-reprice baseline (needs ~1 GB more at 500k), repetitions
 ```
-Results on an Intel i7-12700K (AVX2, no AVX-512), GCC 13.3, one thread, are in
-[BENCHMARKS.md](../../BENCHMARKS.md) and `benchmarks/results/i7-12700K/`: at 500k instruments the baseline takes
-23,482 ms per curve update, the scalar scan 462.4 ms and the grouped kernel 39.1 ms (601x; 96.5% lane occupancy;
-grouped vs scalar 3.5e-15).
+Results on an Intel i7-12700K (AVX2, no AVX-512), GCC 13.3, are in
+[BENCHMARKS.md](../../BENCHMARKS.md). The headline is the pinned ablation
+(`benchmarks/results/i7-12700K_pinned/`): at 500k instruments, logical CPU 2, median of three,
+the baseline takes 22,929 ms and the streaming grouped kernel 33.0 ms (695x, 1.00 ns).
+The earlier unpinned best-of-three in `benchmarks/results/i7-12700K/` is 23,482 ms, 462.4 ms and
+39.1 ms (601x); that run's core was not controlled. Grouped vs scalar agreement on that book is 3.5e-15.

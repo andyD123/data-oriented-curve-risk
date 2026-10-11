@@ -54,6 +54,7 @@ static void test(int seed,bool open){
             x.ois.push_back({p,a,b,notional(rng)});
         }
         if(i%7==0){x.fixed.push_back({5,fixed_amount(rng)});x.ois.push_back({2890,2000,2600,notional(rng)});}
+        if(i==0) x.ois.push_back({800,400,700,1e6,1.03});   // seasoned: forecast window [400,700), H already fixed
         if(i%9==0){x.fixed.push_back({3900,fixed_amount(rng)});x.ois.push_back({4100,3850,3900,notional(rng)});}
     }
     GroupLayout L=build_layout(book,DPY);
@@ -88,7 +89,7 @@ static void test(int seed,bool open){
                                df,pf,cash,projections);
             }
             for(const auto& o:spec.ois)
-                replicate_ois(o.N,o.a_day/DPY,o.b_day/DPY,o.pay_day/DPY,df,cash);
+                replicate_ois(o.N,o.a_day/DPY,o.b_day/DPY,o.pay_day/DPY,df,cash,o.realised);
             sort_by_time(cash);
             std::vector<double> scalar(Sd.K());
             scan_discount_gamma_diagonal(Sd,cash,scalar_scratch,scalar.data());
@@ -107,7 +108,7 @@ static void test(int seed,bool open){
                 }
                 for(const auto& o:spec.ois){
                     const double a=o.a_day/DPY,b=o.b_day/DPY,p=o.pay_day/DPY;
-                    const double A=o.N*df(p)*df(a)/df(b),C=o.N*df(p);
+                    const double A=o.N*o.realised*df(p)*df(a)/df(b),C=o.N*df(p);
                     const double ha=Sd.overlap(k+1,a),hb=Sd.overlap(k+1,b),hp=Sd.overlap(k+1,p);
                     const double r=hb-ha,s=hp-hb,q=hp+ha-hb;
                     corrected-=2*A*r*s;
@@ -150,7 +151,7 @@ static void test(int seed,bool open){
                 }
                 for(const auto& o:spec.ois){
                     const double a=o.a_day/DPY,b=o.b_day/DPY,p=o.pay_day/DPY;
-                    const double A=o.N*df(p)*df(a)/df(b),C=o.N*df(p);
+                    const double A=o.N*o.realised*df(p)*df(a)/df(b),C=o.N*df(p);
                     const double pj=h(j,p),pk=h(k,p);
                     const double qj=pj+h(j,a)-h(j,b),qk=pk+h(k,a)-h(k,b);
                     value+=A*qj*qk-C*pj*pk;

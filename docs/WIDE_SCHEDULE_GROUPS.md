@@ -6,10 +6,13 @@ This example tests a simple architectural question:
 > only one hardware SIMD vector, or should one schedule group contain many SIMD
 > blocks and amortise the date/bucket walk across all of them?
 
-The production grouped scan currently packs eight instruments into one group because
-the AVX-512 implementation uses eight doubles per vector. That makes the financial
-grouping width equal to the hardware register width. The experiment in
-`examples/benchmark/wide_group_bench.cpp` separates those two concepts.
+`build_layout` now takes `group_lanes` (a positive multiple of 8, default 8), and the
+benchmark reads the same choice from `LADDER_GROUP_LANES`. The default, and the published
+kernel, is still one block of eight doubles. On AVX2 that block is two `__m256d` operations
+per column (`ladder/lanes.hpp`), not one eight-wide instruction. The experiment in
+`examples/benchmark/wide_group_bench.cpp` is a separate fixed-cashflow kernel. Production
+`scan_grouped` can share one date walk across several blocks when `group_lanes` is wider
+than 8. Grouped diagonal gamma still rejects `blocks != 1`. Width 8 is what the paper times.
 
 A logical schedule group may contain 8, 16, 32, ... instruments. The hardware
 execution primitive remains eight doubles wide. For a logical group of 1,024
@@ -165,11 +168,14 @@ This experiment deliberately isolates the hypothesis:
 - discount ladder only;
 - no IBOR projection terms;
 - no OIS terms;
-- no change to the production `scan_grouped` path;
-- no claim that these hosted-run timings generalise to all CPUs or portfolios.
+- the production mixed-book kernel still defaults to width 8, which is the published measurement;
+- grouped diagonal gamma does not implement wide groups;
+- no claim that these hosted-run timings generalise to all CPUs or portfolios, or to the
+  500,000-instrument mixed book (bonds, term-rate swaps and compounded OIS).
 
-The next step is to generalise the variable-width schedule-group representation to
-the full discount + projection grouped scan and benchmark it on the paper portfolio.
+`build_layout(..., group_lanes)` is the production path for a wider discount-and-projection
+group. It is off unless the caller asks for it. These hosted timings are not a substitute
+for a measurement of that path on the paper's book, and they are not a row of the published tables.
 
 ## Running it
 
@@ -190,4 +196,5 @@ The implementation is in:
 - `ladder/scan_wide_experiment.hpp`
 - `examples/benchmark/wide_group_bench.cpp`
 
-The example is opt-in and does not alter the production `scan_grouped` implementation.
+The example is opt-in. The production scan accepts wider groups only through `group_lanes`,
+which defaults to 8.

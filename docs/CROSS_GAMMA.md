@@ -64,6 +64,9 @@ Relative error: reduced form vs direct analytic 1.7e-14; finite difference vs re
 portfolio gamma reduction, on the Bank of England SONIA curve; see BOE_CURVE.md): the extra diagonal-gamma kernel
 costs about 0.77-0.83x the first-order kernel (`first_order_kernel_ms` about 61, `gamma_diagonal_kernel_ms` about 48,
 portable backend, on this machine), with 59,820 oracle checks at 2.6e-12. It has no bump baseline, so it is a cost measurement.
+IBOR amounts in that diagonal are frozen off the projection curve (`scan_gamma_grouped.hpp`). On this single
+SONIA curve those forecasts move with the discount curve, and the diagonal does not include that movement.
+The 500,000-instrument timing still includes the term-rate third of the book under that freeze.
 
 ## Caveats
 
@@ -73,7 +76,8 @@ portable backend, on this machine), with 59,820 oracle checks at 2.6e-12. It has
 - The direct analytic and bump baselines are deliberately simple. The taped AAD row is a plain tape and is
   slower than the bump baseline; a tuned implementation would be faster. No claim is made about a tuned
   AAD library, and the O(NK^2) direct analytic Hessian is the natural point of comparison for one.
-- Scope: fixed flows on one curve plus the lagged-OIS correction. General nonlinear products and
-  stochastic convexity are not covered.
+- Scope: fixed flows on one curve plus the lagged-OIS correction. Term-rate forecast amounts stay frozen
+  off the projection curve. General nonlinear products and stochastic convexity are not covered.
+  Wide schedule groups are rejected by the grouped diagonal.
 - These timings are not comparable with the 500,000-instrument first-order headline (different machine,
   workload and output).

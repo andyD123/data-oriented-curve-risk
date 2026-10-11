@@ -16,7 +16,10 @@ struct alignas(64) Lane8 { double v[LANES]; };
 // ---- instrument description (integer days from the reference date; amounts in currency)
 struct FixedFlow { int day; double amount; };
 struct FloatFlow { int pay_day, a_day, b_day; double scale; };   // IBOR: amount = scale*(P(a)/P(b)-1)
-struct OisFlow   { int pay_day, a_day, b_day; double N; };       // compounded ON: N*(D(a)/D(b)-1) paid at pay_day
+// Compounded overnight: N*(realised*D(a)/D(b) - 1) paid at pay_day.
+// realised is the growth already fixed before the forecast window [a, b]. It is 1 for a coupon
+// that is still entirely in the future. a is the start of the forecast window, not the original accrual start.
+struct OisFlow   { int pay_day, a_day, b_day; double N; double realised = 1.0; };
 struct InstrumentSpec {
     int signature;                     // grouping key: conventions + last regular payment date (same key => shared regular grid)
     std::vector<FixedFlow> fixed;
@@ -32,11 +35,16 @@ struct DateTable {
 };
 
 struct Group {
-    int n_valid = 0; std::array<int, LANES> inst{};
+    int n_valid = 0;
+    int blocks = 1;                    // eight-wide blocks in this schedule group
+    bool realised_ois = false;         // some lane has an overnight realised factor other than 1
+    std::size_t vec8_prefix = 0;       // sum of blocks over earlier groups; output starts at prefix*(Kd+Kp)*8
+    std::vector<int> inst;             // blocks*LANES entries, unused lanes -1
     std::vector<int>   col_di;         // discount columns, ascending by date: index into the table
-    std::vector<Lane8> col_amt;        // per column, per lane fixed amount
-    std::vector<std::array<int,3>> f_di; std::vector<int> f_col; std::vector<Lane8> f_scale;          // IBOR {ip, ia, ib}
+    std::vector<Lane8> col_amt;        // [column * blocks + block], per lane fixed amount
+    std::vector<std::array<int,3>> f_di; std::vector<int> f_col; std::vector<Lane8> f_scale;          // IBOR {ip, ia, ib}; scale is per block
     std::vector<std::array<int,3>> o_di; std::vector<std::array<int,3>> o_col; std::vector<Lane8> o_N; // OIS {ip, ia, ib}
+    std::vector<Lane8> o_NH;           // sum of N*realised, parallel to o_N. Equals o_N when every realised factor is 1
     std::vector<std::pair<int,int>> o_at;  // (column, q*3 + kind) for every OIS entry, sorted by column
 };
 
@@ -48,10 +56,18 @@ struct GroupLayout {
     bool refreshed = false;
     std::vector<double> discount_grid, projection_grid; // detect stale cached bucket indices
     size_t stride(int K_disc, int K_proj) const { return (size_t)(K_disc + K_proj) * LANES; }
+    // Total output doubles. Equals groups.size()*stride when every group has one block.
+    size_t output_doubles(int K_disc, int K_proj) const {
+        size_t n = 0;
+        for (const auto& G : groups) n += (size_t)G.blocks * stride(K_disc, K_proj);
+        return n;
+    }
 };
 
-inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double days_per_year = 365.0)
+inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double days_per_year = 365.0, int group_lanes = LANES)
 {
+    if (group_lanes < LANES || group_lanes % LANES != 0)
+        throw std::invalid_argument("build_layout: group_lanes must be a positive multiple of 8");
     if (!(days_per_year > 0.0) || !std::isfinite(days_per_year))
         throw std::invalid_argument("build_layout: days_per_year must be finite and positive");
     if (book.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
@@ -63,7 +79,7 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
             if (!std::isfinite(c.scale) || c.a_day > c.b_day)
                 throw std::invalid_argument("build_layout: invalid IBOR coupon");
         for (const auto& c : in.ois)
-            if (!std::isfinite(c.N) || c.a_day > c.b_day)
+            if (!std::isfinite(c.N) || !std::isfinite(c.realised) || !(c.realised > 0.0) || c.a_day > c.b_day)
                 throw std::invalid_argument("build_layout: invalid OIS coupon");
     }
     GroupLayout L; L.days_per_year = days_per_year;
@@ -73,9 +89,12 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
     std::vector<int> days; std::vector<std::vector<int>> col_day;                 // per group, column days
     for (int s : sigs) {
         auto& members = by_sig[s];
-        for (size_t g = 0; g < members.size(); g += LANES) {
-            Group G; G.n_valid = (int)std::min<size_t>(LANES, members.size() - g);
-            for (int l = 0; l < LANES; ++l) G.inst[l] = l < G.n_valid ? members[g + l] : -1;
+        for (size_t g = 0; g < members.size(); g += (size_t)group_lanes) {
+            Group G;
+            G.n_valid = (int)std::min<size_t>(group_lanes, members.size() - g);
+            G.blocks = (G.n_valid + LANES - 1) / LANES;
+            G.inst.assign((size_t)G.blocks * LANES, -1);
+            for (int l = 0; l < G.n_valid; ++l) G.inst[l] = members[g + l];
             // columns are the union of the members' dates; a lane holds zero on a column where its instrument has no
             // cashflow. Members with the same conventions and last regular date share every regular column whatever
             // their start dates (the longest-history member supplies the grid); unrelated members still work, at lower
@@ -89,7 +108,7 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
             }
             std::sort(dset.begin(), dset.end()); dset.erase(std::unique(dset.begin(), dset.end()), dset.end());
             auto col_of = [&](int d){ return (int)(std::lower_bound(dset.begin(), dset.end(), d) - dset.begin()); };
-            G.col_amt.assign(dset.size(), Lane8{});
+            G.col_amt.assign(dset.size() * (size_t)G.blocks, Lane8{});
             // float / OIS coupons are keyed by their (pay, a, b) dates across the group: union, then per-lane scale
             std::vector<std::array<int,3>> fkeys, okeys;
             for (int l = 0; l < G.n_valid; ++l) { const InstrumentSpec& in = book[members[g + l]];
@@ -99,14 +118,22 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
             std::sort(okeys.begin(), okeys.end()); okeys.erase(std::unique(okeys.begin(), okeys.end()), okeys.end());
             for (auto& k : fkeys) { G.f_di.push_back(k); G.f_col.push_back(col_of(k[0])); }
             for (auto& k : okeys) { G.o_di.push_back(k); G.o_col.push_back({col_of(k[0]), col_of(k[1]), col_of(k[2])}); }
-            G.f_scale.assign(fkeys.size(), Lane8{}); G.o_N.assign(okeys.size(), Lane8{});
+            G.f_scale.assign(fkeys.size() * (size_t)G.blocks, Lane8{});
+            G.o_N.assign(okeys.size() * (size_t)G.blocks, Lane8{});
+            G.o_NH.assign(okeys.size() * (size_t)G.blocks, Lane8{});
             auto fidx = [&](const std::array<int,3>& k){ return (int)(std::lower_bound(fkeys.begin(), fkeys.end(), k) - fkeys.begin()); };
             auto oidx = [&](const std::array<int,3>& k){ return (int)(std::lower_bound(okeys.begin(), okeys.end(), k) - okeys.begin()); };
             for (int l = 0; l < G.n_valid; ++l) {
                 const InstrumentSpec& in = book[members[g + l]];
-                for (auto& c : in.fixed) G.col_amt[col_of(c.day)].v[l] += c.amount;
-                for (auto& f : in.flt) G.f_scale[fidx({f.pay_day, f.a_day, f.b_day})].v[l] += f.scale;
-                for (auto& o : in.ois) G.o_N[oidx({o.pay_day, o.a_day, o.b_day})].v[l] += o.N;
+                const int block = l / LANES, sub = l % LANES;
+                for (auto& c : in.fixed) G.col_amt[(size_t)col_of(c.day) * G.blocks + block].v[sub] += c.amount;
+                for (auto& f : in.flt) G.f_scale[(size_t)fidx({f.pay_day, f.a_day, f.b_day}) * G.blocks + block].v[sub] += f.scale;
+                for (auto& o : in.ois) {
+                    const size_t slot = (size_t)oidx({o.pay_day, o.a_day, o.b_day}) * G.blocks + block;
+                    G.o_N[slot].v[sub] += o.N;
+                    G.o_NH[slot].v[sub] += o.N * o.realised;
+                    if (o.realised != 1.0) G.realised_ois = true;
+                }
             }
             for (size_t q = 0; q < G.o_col.size(); ++q) for (int kind = 0; kind < 3; ++kind) G.o_at.push_back({G.o_col[q][kind], (int)q * 3 + kind});
             std::sort(G.o_at.begin(), G.o_at.end());
@@ -128,6 +155,8 @@ inline GroupLayout build_layout(const std::vector<InstrumentSpec>& book, double 
     }
     size_t n = days.size(); L.table.t.resize(n); L.table.D.resize(n); L.table.P.resize(n); L.table.bo.resize(n); L.table.bp.resize(n);
     for (size_t i = 0; i < n; ++i) L.table.t[i] = days[i] / days_per_year;
+    std::size_t prefix = 0;
+    for (auto& G : L.groups) { G.vec8_prefix = prefix; prefix += (size_t)G.blocks; }
     return L;
 }
 
@@ -157,8 +186,8 @@ inline void refresh_table(GroupLayout& L, const Stencils& Sd, const Stencils& Sp
 //   new_group       otherwise a single-instrument group is built; all its dates must already be in the shared date table
 //   rebuild_needed  a payment date is not in the date table (the table, and every group's table indices, would shift),
 //                   or the input is invalid; nothing is changed
-// The date table is untouched, so refreshed values stay valid. The caller owns the output buffer and must make it
-// large enough for L.groups.size() groups after a new_group result.
+// The date table is untouched, so refreshed values stay valid. The caller owns the output buffer and must size it
+// with output_doubles() after a new_group result. A new group is one block and is appended after the existing prefix.
 enum class InsertResult { free_lane, new_group, rebuild_needed };
 
 namespace detail {
@@ -177,7 +206,9 @@ inline InsertResult insert_instrument(GroupLayout& L, const InstrumentSpec& in, 
 {
     for (const auto& c : in.fixed) if (!std::isfinite(c.amount)) return InsertResult::rebuild_needed;
     for (const auto& c : in.flt) if (!std::isfinite(c.scale) || c.a_day > c.b_day) return InsertResult::rebuild_needed;
-    for (const auto& c : in.ois) if (!std::isfinite(c.N) || c.a_day > c.b_day) return InsertResult::rebuild_needed;
+    for (const auto& c : in.ois)
+        if (!std::isfinite(c.N) || !std::isfinite(c.realised) || !(c.realised > 0.0) || c.a_day > c.b_day)
+            return InsertResult::rebuild_needed;
     const DateTable& T = L.table;
     // every date must already be in the table
     auto known = [&](int d) { return detail::table_index(T, d) >= 0; };
@@ -190,7 +221,7 @@ inline InsertResult insert_instrument(GroupLayout& L, const InstrumentSpec& in, 
     if (sg != L.sig_groups.end()) {
         for (int gi : sg->second) {
             Group& G = L.groups[gi];
-            if (G.n_valid >= LANES) continue;
+            if (G.n_valid >= G.blocks * LANES) continue;
             std::vector<int> fcol(in.fixed.size()), fq(in.flt.size()), oq(in.ois.size());
             bool fits = true;
             for (size_t j = 0; j < in.fixed.size() && fits; ++j) {       // col_di ascending by table index
@@ -209,9 +240,15 @@ inline InsertResult insert_instrument(GroupLayout& L, const InstrumentSpec& in, 
             if (!fits) continue;
             const int l = G.n_valid++;
             G.inst[l] = instrument_id;
-            for (size_t j = 0; j < in.fixed.size(); ++j) G.col_amt[fcol[j]].v[l] += in.fixed[j].amount;
-            for (size_t j = 0; j < in.flt.size(); ++j) G.f_scale[fq[j]].v[l] += in.flt[j].scale;
-            for (size_t j = 0; j < in.ois.size(); ++j) G.o_N[oq[j]].v[l] += in.ois[j].N;
+            const int block = l / LANES, sub = l % LANES;
+            for (size_t j = 0; j < in.fixed.size(); ++j) G.col_amt[(size_t)fcol[j] * G.blocks + block].v[sub] += in.fixed[j].amount;
+            for (size_t j = 0; j < in.flt.size(); ++j) G.f_scale[(size_t)fq[j] * G.blocks + block].v[sub] += in.flt[j].scale;
+            for (size_t j = 0; j < in.ois.size(); ++j) {
+                const size_t slot = (size_t)oq[j] * G.blocks + block;
+                G.o_N[slot].v[sub] += in.ois[j].N;
+                G.o_NH[slot].v[sub] += in.ois[j].N * in.ois[j].realised;
+                if (in.ois[j].realised != 1.0) G.realised_ois = true;
+            }
             return InsertResult::free_lane;
         }
     }
@@ -219,6 +256,8 @@ inline InsertResult insert_instrument(GroupLayout& L, const InstrumentSpec& in, 
     GroupLayout one = build_layout(std::vector<InstrumentSpec>{in}, L.days_per_year);
     Group G = std::move(one.groups.front());
     G.inst[0] = instrument_id;
+    G.vec8_prefix = 0;
+    for (const auto& E : L.groups) G.vec8_prefix += (size_t)E.blocks;
     auto remap = [&](int idx) { return detail::table_index(T, one.table.day[idx]); };
     for (int& d : G.col_di) d = remap(d);
     for (auto& f : G.f_di) for (int& d : f) d = remap(d);

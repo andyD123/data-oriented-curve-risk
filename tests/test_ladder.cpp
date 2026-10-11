@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <vector>
 #include "../ladder/stencil.hpp"
 #include "../ladder/unit_cashflow.hpp"
@@ -52,7 +53,7 @@ int main()
         }
         for (auto& c : in.fixed) replicate_fixed(c.amount, c.day / DPY, df, ucf[i]);
         for (auto& f : in.flt) replicate_ibor(f.scale, f.a_day / DPY, f.b_day / DPY, f.pay_day / DPY, df, pf, ucf[i], pterms[i]);
-        for (auto& o : in.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, ucf[i]);
+        for (auto& o : in.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, ucf[i], o.realised);
         sort_by_time(ucf[i]);
     }
     const int Kd = cd.S.K(), Kp = cp.S.K();
@@ -221,6 +222,139 @@ int main()
         CHECK(std::fabs(cz.df_bumped(5.0, bump_k, delta) / cz.df(5.0) - right_factor) < 1e-15, "exact right tail shift");
 
         std::printf("simple zero curve construction: verified (nodes, flat, forward rate, exact no-leakage)\n");
+    }
+
+    // ---- 7. seasoned overnight factor, and schedule groups wider than one SIMD block
+    {
+        auto worst_rel = [](const std::vector<double>& got, const std::vector<double>& ref) {
+            double w = 0;
+            for (size_t k = 0; k < ref.size(); ++k) {
+                double scale = std::max(1.0, std::fabs(ref[k]));
+                w = std::max(w, std::fabs(got[k] - ref[k]) / scale);
+            }
+            return w;
+        };
+        InstrumentSpec seasoned;
+        seasoned.signature = 7;
+        const double H = 1.02, notional = 1e6;
+        seasoned.ois.push_back({513, 146, 511, notional, H});   // forecast window starts at day 146; H is already fixed
+        seasoned.fixed.push_back({513, -notional * 0.03});
+        std::vector<UnitCashflow> u;
+        for (auto& c : seasoned.fixed) replicate_fixed(c.amount, c.day / DPY, df, u);
+        for (auto& o : seasoned.ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, u, o.realised);
+        sort_by_time(u);
+        std::vector<double> sd(Kd, 0.0);
+        scan_discount(cd.S, u, sd.data());
+        double w_adj = 0, scale = 1.0;
+        for (double v : sd) scale = std::max(scale, std::fabs(v));
+        for (int k = 1; k <= Kd; ++k) {
+            double a = 0;
+            for (auto& c : u) a -= c.x * cd.S.overlap(k, c.t);
+            w_adj = std::max(w_adj, std::fabs(a - sd[k - 1]) / scale);
+        }
+        auto pv = [&](int k, double d) {
+            const auto& c = seasoned.fixed[0];
+            const auto& o = seasoned.ois[0];
+            return c.amount * cd.df_bumped(c.day / DPY, k, d)
+                + o.N * (o.realised * cd.df_bumped(o.a_day / DPY, k, d) / cd.df_bumped(o.b_day / DPY, k, d) - 1.0)
+                    * cd.df_bumped(o.pay_day / DPY, k, d);
+        };
+        double w_fd = 0;
+        for (int k = 1; k <= Kd; ++k) {
+            double f = (pv(k, 1e-5) - pv(k, -1e-5)) / 2e-5;
+            w_fd = std::max(w_fd, std::fabs(f - sd[k - 1]) / scale);
+        }
+        CHECK(w_adj < 1e-12, "seasoned OIS vs overlap adjoint: %.2e", w_adj);
+        CHECK(w_fd < 1e-6, "seasoned OIS vs central finite difference: %.2e", w_fd);
+
+        std::vector<InstrumentSpec> one{seasoned};
+        GroupLayout Lg = build_layout(one, DPY);
+        refresh_table(Lg, cd.S, cp.S, df, pf);
+        CHECK(Lg.groups.size() == 1 && Lg.groups[0].blocks == 1 && Lg.groups[0].realised_ois, "seasoned coupon should set the realised path");
+        double* og = (double*)ladder::allocate_aligned(Lg.output_doubles(Kd, Kp) * sizeof(double));
+        scan_grouped<Store::normal>(Lg, cd.S, cp.S, og);
+        std::vector<double> got(Kd + Kp);
+        gather(Lg, Kd, Kp, og, 0, 0, got.data());
+        double w_g = 0;
+        for (int k = 0; k < Kd; ++k) w_g = std::max(w_g, std::fabs(got[k] - sd[k]) / scale);
+        for (int k = 0; k < Kp; ++k) w_g = std::max(w_g, std::fabs(got[Kd + k]));
+        CHECK(w_g < 1e-12, "seasoned OIS grouped vs scalar: %.2e", w_g);
+        ladder::free_aligned(og);
+
+        bool threw = false;
+        try { replicate_ois(1.0, 0.0, 1.0, 1.0, df, u, 0.0); } catch (const std::invalid_argument&) { threw = true; }
+        CHECK(threw, "non-positive realised factor must be rejected");
+
+        // Twenty fully forecast trades and twelve seasoned trades, packed 32 lanes to a group (four SIMD blocks).
+        std::vector<InstrumentSpec> wide;
+        for (int i = 0; i < 20; ++i) {
+            InstrumentSpec in;
+            in.signature = 100;
+            int maturity = 40 + (int)std::lround(6 * 365.25);
+            auto day = [&](int n) { return maturity - (int)std::lround(n * 365.25 / 2.0); };
+            int rem = 4 + (i % 8);
+            for (int j = 2 * rem - 1; j >= 0; --j) in.fixed.push_back({day(j), 1e6 * 0.02 / 2 + (j == 0 ? 1e6 : 0.0)});
+            wide.push_back(std::move(in));
+        }
+        for (int i = 0; i < 12; ++i) {
+            InstrumentSpec in;
+            in.signature = 200;
+            int maturity = 50 + (int)std::lround(5 * 365.25);
+            auto day = [&](int n) { return maturity - (int)std::lround(n * 365.25); };
+            int rem = 2 + (i % 4);
+            for (int j = rem - 1; j >= 0; --j) {
+                int pay = day(j) + 2, b = day(j), a = day(j + 1);
+                double realised = (i % 2 == 0) ? 1.0 : 1.0 + 0.01 * (i + 1);
+                if (j == rem - 1 && realised != 1.0) a = b - 146;   // seasoned: forecast window is shorter than the original accrual
+                in.fixed.push_back({pay, -1e6 * 0.025});
+                in.ois.push_back({pay, a, b, 1e6, realised});
+            }
+            wide.push_back(std::move(in));
+        }
+        std::vector<std::vector<UnitCashflow>> wu(wide.size());
+        std::vector<std::vector<ProjectionTerm>> wp(wide.size());
+        for (size_t i = 0; i < wide.size(); ++i) {
+            for (auto& c : wide[i].fixed) replicate_fixed(c.amount, c.day / DPY, df, wu[i]);
+            for (auto& o : wide[i].ois) replicate_ois(o.N, o.a_day / DPY, o.b_day / DPY, o.pay_day / DPY, df, wu[i], o.realised);
+            sort_by_time(wu[i]);
+        }
+        GroupLayout Lw = build_layout(wide, DPY, 32);
+        refresh_table(Lw, cd.S, cp.S, df, pf);
+        CHECK(Lw.groups.size() == 2, "two signatures should be two wide groups, got %zu", Lw.groups.size());
+        CHECK(Lw.groups[0].blocks == 3 && Lw.groups[1].blocks == 2, "block counts %d and %d", Lw.groups[0].blocks, Lw.groups[1].blocks);
+        CHECK(!Lw.groups[0].realised_ois && Lw.groups[1].realised_ois, "only the seasoned signature takes the realised amount path");
+        const size_t wn = Lw.output_doubles(Kd, Kp);
+        double* ow = (double*)ladder::allocate_aligned(wn * sizeof(double));
+        double* ows = (double*)ladder::allocate_aligned(wn * sizeof(double));
+        scan_grouped<Store::normal>(Lw, cd.S, cp.S, ow);
+        scan_grouped<Store::streaming>(Lw, cd.S, cp.S, ows);
+        double w_wide = 0, w_store = 0;
+        std::vector<double> gbuf(Kd + Kp), sref(Kd);
+        for (size_t gi = 0; gi < Lw.groups.size(); ++gi) {
+            for (int l = 0; l < Lw.groups[gi].n_valid; ++l) {
+                int i = Lw.groups[gi].inst[l];
+                gather(Lw, Kd, Kp, ow, (int)gi, l, gbuf.data());
+                scan_discount(cd.S, wu[i], sref.data());
+                for (int k = 0; k < Kd; ++k) {
+                    double sc = std::max(1.0, std::fabs(sref[k]));
+                    w_wide = std::max(w_wide, std::fabs(gbuf[k] - sref[k]) / sc);
+                }
+                for (int k = 0; k < Kp; ++k) w_wide = std::max(w_wide, std::fabs(gbuf[Kd + k]));
+            }
+        }
+        for (size_t j = 0; j < wn; ++j) w_store = std::max(w_store, std::fabs(ow[j] - ows[j]));
+        std::vector<double> reduced(Kd + Kp, 0.0), expect(Kd + Kp, 0.0);
+        scan_grouped_reduce(Lw, cd.S, cp.S, reduced.data());
+        for (size_t i = 0; i < wide.size(); ++i) {
+            scan_discount(cd.S, wu[i], sref.data());
+            for (int k = 0; k < Kd; ++k) expect[k] += sref[k];
+        }
+        double w_red = worst_rel(reduced, expect);
+        CHECK(w_wide < 1e-9, "wide groups vs scalar: %.2e", w_wide);
+        CHECK(w_store == 0.0, "wide streaming vs normal: %.2e", w_store);
+        CHECK(w_red < 1e-9, "wide in-register reduce vs scalar sum: %.2e", w_red);
+        ladder::free_aligned(ow); ladder::free_aligned(ows);
+        std::printf("seasoned OIS: adjoint %.1e, FD %.1e, grouped %.1e; wide groups vs scalar %.1e\n", w_adj, w_fd, w_g, w_wide);
     }
 
     std::printf(fails ? "FAILED (%d)\n" : "all tests passed\n", fails);
