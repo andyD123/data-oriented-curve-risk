@@ -98,20 +98,29 @@ stochastic payment-delay convexity or quote-rebootstrap gamma.
 
 ~~~cpp
 GroupGammaScratch scratch;
-double* delta = /* existing aligned grouped first-order output */;
-double* gamma = /* groups * Kd * 8 doubles, 64-byte aligned */;
-scan_grouped<Store::streaming>(layout, discount, projection, delta);
+double* delta = /* aligned: groups * (Kd + Kp) * 8 doubles */;
+double* gamma = /* aligned: groups * Kd * 8 doubles */;
+const size_t delta_n = layout.groups.size() *
+    layout.stride(discount.K(), projection.K());
+const size_t gamma_n = layout.groups.size() *
+    grouped_gamma_stride(discount.K());
+scan_grouped<Store::streaming>(
+    layout, discount, projection, std::span<double>(delta, delta_n));
 scan_grouped_gamma_diagonal<Store::streaming>(
-    layout, discount, gamma, scratch);
+    layout, discount, std::span<double>(gamma, gamma_n), scratch);
 GroupedDiscountCrossGammaView view(
-    layout, discount, projection.K(), delta, gamma);
+    layout, discount, projection.K(),
+    std::span<const double>(delta, delta_n),
+    std::span<const double>(gamma, gamma_n));
 const double h_3_7 = view.at(group_index, lane, 2, 6);
 view.multiply(group_index, lane, shocks, hvp_output, scratch);
 ~~~
 
-The view borrows the layout and two output buffers. They must remain alive
-and correspond to the same curve snapshot. Do not refresh/overwrite while
-reading, or share the mutable scratch between concurrent callers.
+The view borrows the layout, stencils and two output buffers.
+Checked spans validate their lengths but **do not acquire ownership**.
+All inputs must remain alive and refer to the same curve snapshot.
+Do not refresh/overwrite while reading, or share mutable scratch between
+concurrent callers. See the [grouped ownership guide](GROUPED_DATA_FLOW.md).
 
 No extra gamma work is performed by the original first-order scan.
 This stage is an opt-in CPU implementation; full multi-curve second-order
