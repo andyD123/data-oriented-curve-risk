@@ -93,12 +93,12 @@ The runner prints the QuantLib version, wave dates, real coupon price,
 analytic expectations, residuals and mixed finite-difference convergence.
 It exits nonzero on failure.
 
-**External live execution (11 October 2026):** An independent
+**External live execution:** An independent
 cloud Linux run with **QuantLib Python 1.43 / GCC 13.3** successfully ran
 both cases, after the initial authoring environment lacked QuantLib.
 The original external log was reported, not independently captured by this
 CI runner. Numerical results and provenance appear in
-[the dated QuantLib 1.43 record](../../../docs/QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+[the QuantLib 1.43 record](../../../docs/QUANTLIB_LIVE_OIS_GAMMA.md).
 
 | Test | Frozen cross-gamma | Rank-two correction | Correct cross-gamma |
 |---|---:|---:|---:|
@@ -137,7 +137,7 @@ stochastic convexity. No speedup or general QuantLib equivalence is
 inferred from running the optional Python test.
 
 
-### GitHub CI live validation (11 October 2026)
+### GitHub CI live validation
 
 The independent reported run above covered two cases. A subsequent GitHub
 Actions job installed **QuantLib Python 1.43** and executed all three
@@ -157,7 +157,7 @@ wave boundaries. Its wave-3 diagonal gamma was:
 
 Every one of the **15 unique elements in the 5x5 Hessian** was also
 compared with live QuantLib repricing; all passed. The published full
-numeric results are in the [dated evidence record](../../../docs/QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+numeric results are in the [validation evidence record](../../../docs/QUANTLIB_LIVE_OIS_GAMMA.md).
 
 The runner now also checks diagonal finite-difference convergence using
 large enough step sizes to distinguish O(h^2) truncation from

@@ -1,4 +1,4 @@
-# Reduced-form cross-gamma benchmark — 10 October 2026
+# Reduced-form cross-gamma benchmark
 
 Research evidence only: this is NOT the paper's 500,000-instrument
 benchmark, and it is NOT a QuantLib benchmark.

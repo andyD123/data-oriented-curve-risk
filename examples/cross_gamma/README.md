@@ -187,13 +187,13 @@ See [quantlib/README.md](quantlib/README.md) for two distinct methods.
    creates an actual QuantLib overnight coupon, bumps log-discount curves,
    and prepares a **live** second-order finite-difference reconciliation.
    The authoring environment lacked QuantLib, but an independent
-   cloud Linux run on **11 October 2026** used **QuantLib Python 1.43**.
+   cloud Linux run used **QuantLib Python 1.43**.
    Standard, stressed, and now an **interior-bucket** OIS case passed live
    QuantLib 1.43 finite differences. The third case independently validates
    the nonzero diagonal lag correction and all 15 unique elements of its
    5x5 Hessian. The externally supplied numerical
    evidence is transcribed in
-   [the validation record](../../docs/QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
+   [the validation record](../../docs/QUANTLIB_LIVE_OIS_GAMMA.md).
    This validates the specific fully forecast, same-curve model and selected
    cross-wave pair, not every OIS convention or stochastic convexity.
 
@@ -210,4 +210,4 @@ those operations.
 
 **No new performance claim** is inferred from the explanatory example.
 For the separately measured fixed-cashflow research benchmark, see
-[the performance evidence note](../../docs/CROSS_GAMMA_BENCHMARK_2026-10-10.md).
+[the performance evidence note](../../docs/CROSS_GAMMA_BENCHMARK.md).

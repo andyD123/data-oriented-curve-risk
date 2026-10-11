@@ -1,8 +1,8 @@
-# Code review and validation — 4 October 2026
+# Code review and validation
 
 ## Review basis
 
-The corrected upload was `files - 2026-10-04T112726.620.zip`, SHA-256
+The reviewed source archive has SHA-256
 `8704d170e43603411ff198dcff06a06dac36143f9d6fa1daa9e29fce13e56ae4`.
 The source root in its nested archive was `reworking_project/ladder_repo/`.
 At the start, GitHub main was already `39777a2ac3560afaf0ea505ce386614802b47096`,
@@ -126,9 +126,9 @@ library/replay executables are the tested build surface.
 
 No release/publication tag or new automatic CI/hardware-sweep workflow was created.
 
-## Follow-up validation — 6 October 2026
+## Follow-up validation
 
-This addendum records later repository changes; it does not rewrite the 4 October review above.
+This addendum records subsequent changes without rewriting the initial review.
 The follow-up environment was an Intel Xeon Platinum 8573C cloud container with GCC 14.2.0 and AVX-512
 available. QuantLib was not installed.
 

@@ -17,8 +17,6 @@ and its [optional QuantLib reconciliation](examples/cross_gamma/quantlib/README.
 `measure_best(repetitions, work)` timing helper; their reports are separate from pricing.
 This is a readability pass on those three examples, not a rewrite of the scan library.
 
-For paper claims and their exact commands/records, see [Paper claim -> code and evidence](docs/PAPER_EVIDENCE.md).
-
 ## Wide schedule-group experiment
 
 An opt-in example tests whether instruments sharing one schedule should be grouped independently
@@ -101,7 +99,7 @@ ctest --preset release
 The `release` preset builds both instruction sets. Each vectorised target exists twice,
 built against `ladder_avx2` (`-mavx2 -mfma`) and `ladder_avx512`
 (`-mavx512f -mavx512dq -mfma -mprefer-vector-width=512`); both add `-ffp-contract=fast`, and under
-MSVC they are `/arch:AVX2` and `/arch:AVX512` with `/fp:contract` (VS 2022 and later), so every
+MSVC they are `/arch:AVX2` and `/arch:AVX512` with `/fp:contract` (supported MSVC versions), so every
 compiler may fuse `a*b+c` into one FMA. Contraction changes rounding in the last bits, and each
 compiler chooses where to apply it, so results agree across compilers to tolerance, not bit for bit:
 `test_ladder_avx2` / `test_ladder_avx512`, `test_boundaries_avx2` / `test_boundaries_avx512`,
@@ -216,7 +214,7 @@ no longer imposes GNU/x86 flags, and its core tests/benchmark use C++ aligned ne
 but that is not a claim of tested portability on those unexecuted systems.
 
 Existing `recorded_*` files remain historical evidence, not results of this review.
-`examples/benchmark_paper/recorded_500k.txt` predates the October 2026 rate-unit alignment:
+`examples/benchmark_paper/recorded_500k.txt` predates the rate-unit alignment:
 that historical run emitted interval-integrated-forward (`theta`) sensitivities. Current
 `bench_paper.cpp` emits the manuscript/library convention, per unit additive instantaneous-
 forward shift (`delta`). The old timing is retained and labelled rather than silently

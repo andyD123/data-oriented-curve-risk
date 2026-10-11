@@ -1,6 +1,6 @@
 # Hagan box waves on the reverse scan — QuantLib example
 
-Risk defined as Hagan's forward-curve box shifts (Hagan & West 2006/2008; Hagan, Wilmott 2015),
+Risk defined as Hagan's forward-curve box shifts (Hagan & West; Hagan's Wilmott wave-risk formulation),
 computed by the reverse scan from unit cashflows, on QuantLib's **shipped** MulticurveBootstrapping
 curves with their **cubic** interpolation left unchanged. Reconciled against QuantLib's own wave
 bumps, then hedged against the example's par OIS and swaps.
@@ -34,8 +34,8 @@ DiscountFactor discountImpl(Time t) const override {
     return base_->discount(t, true) * std::exp(-delta_ * overlap(t));
 }
 ```
-Interior waves use the bounded policy. The final wave uses `open_last_ = true`, matching Hagan (2015,
-eq. 2.2b/2.3b). The actual implementation is in `ql_waves.cpp`; this excerpt only shows the terminal policy.
+Interior waves use the bounded policy. The final wave uses `open_last_ = true`, matching Hagan's equations
+(2.2b/2.3b). The actual implementation is in `ql_waves.cpp`; this excerpt only shows the terminal policy.
 Relink the handle the instruments price off; at-par coupon fixings on the projection curve follow automatically.
 Times are in the base curve's own basis (the Euribor curve's reference date is the settlement date).
 
@@ -47,8 +47,8 @@ Scan vs QuantLib wave bumps on the shipped cubic curves:
 |---|---|---|---|
 | swap 5y (example) | 4.1e-10 | 1.0e-10 | 3.64 |
 | swap 1y5y forward (example) | 4.1e-10 | 1.0e-10 | 3.59 |
-| bond 4.5% 2007–2017 (example) | 1.6e-09 | 4.1e-10 | 3.97 |
-| zero-coupon Aug 2013 (example) | 4.9e-11 | 1.3e-11 | 1.80 (at rounding floor) |
+| bond 4.5% (example) | 1.6e-09 | 4.1e-10 | 3.97 |
+| zero-coupon bond (example) | 4.9e-11 | 1.3e-11 | 1.80 (at rounding floor) |
 | OIS 5y, 2-day lag | 1.7e-09 | 4.2e-10 | 3.94 |
 | amortising 7y | 4.2e-10 | 1.0e-10 | 3.65 |
 | 6y, front stub, 25 bp spread | 2.8e-10 | 7.0e-11 | 3.40 |
@@ -94,7 +94,7 @@ case. The scan evaluates the same zero-shift contraction with the overlap struct
 
 ## Hedging as Hagan states it (`hagan_hedge.py`) — paper7 by default
 
-Hagan (2015, eqs. 2.2, 2.7–2.10) puts one wave per hedge instrument at its maturity. With the hedge instruments
+Hagan (eqs. 2.2, 2.7–2.10) puts one wave per hedge instrument at its maturity. With the hedge instruments
 ordered by maturity, `H.T` is upper-triangular and `hagan_hedge.py` solves `H.T a = -g` by explicit back-substitution.
 The default `--book paper7` excludes `bond_35y_beyond_last_pillar`, because that bond was added only to test the
 terminal wave and is not part of the paper's hedge population. `--book extended8` includes it and produces a
@@ -107,7 +107,7 @@ For `paper7`: nine Eonia waves (par OIS 2–10y), eight Euribor waves (par swaps
 
 ## Last-wave convention and the instrument that tests it
 
-Hagan's last wave (2015, eq. 2.2b) extends flat beyond the final maturity; the library's `Stencils::open_last` selects
+Hagan's last wave (eq. 2.2b) extends flat beyond the final maturity; the library's `Stencils::open_last` selects
 that convention (false = box of length ℓ_K). An earlier version of the scalar scan double-counted cashflows beyond
 B[K] (uncapped interior weight plus the ℓ_K tail) and no example reached that region; found in external review.
 Fixed in `ladder/scan.hpp` and `scan_simd.hpp`, with `tests/test_ladder.cpp` now covering both conventions against the

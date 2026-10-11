@@ -21,7 +21,7 @@ measurement is not in this repository, so it is context rather than a self-conta
 manuscript also distinguishes 270 MiB from the benchmark's 270,479,616-byte padded output.
 
 `write_floor` is the current reproducible write-only benchmark. Its default byte count is exactly 270,479,616;
-pass `283115520` to measure 270 MiB. `recorded_2026-10-06_write_floor.txt` is a fresh cloud-host run and is
+pass `283115520` to measure 270 MiB. `recorded_write_floor_cloud.txt` is a separate cloud-host run and is
 explicitly not the historical 15.7 ms measurement.
 `recorded_sweep.txt` is the working-set staircase (10k–500k).
 
@@ -40,7 +40,7 @@ and reverse traversal; this experiment does not isolate tape-memory traffic or e
 implementations. The geometry-aware N·K adjoint is within 1.7x of the scan at scalar level.
 
 The original raw log behind the historical 431/726/8784 ms row has not been recovered.
-`recorded_2026-10-06_adjoint_500k.txt` is a fresh current-source run on a different cloud host; it validates the
+`recorded_adjoint_500k_cloud.txt` is a separate current-source run on a different cloud host; it validates the
 comparison and correctness gate but does not replace the historical timings.
 
 ## LRU date cache: grouping trades by shared schedule (`scenario_bench.cpp`)
