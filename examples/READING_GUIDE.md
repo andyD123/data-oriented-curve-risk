@@ -1,5 +1,12 @@
 # Reading the demonstrators
 
+## Start here for first-order curve risk
+
+[The minimal curve example](curve_intro/README.md) shows
+`Curve::flat`, `replicate_fixed`, `scan_discount` and the exact
+box-wave-bumped repricing oracle without QuantLib or any grouped layout.
+It is the recommended introduction for a new reader.
+
 ## Start here for second-order curve risk
 
 [**The 16-bucket cross-gamma example**](cross_gamma/README.md) is the

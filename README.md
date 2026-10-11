@@ -17,6 +17,20 @@ ctest --test-dir build --output-on-failure
 
 Requires a C++20 compiler and CMake 3.16+. The default build chooses a supported SIMD backend without silently enabling host-specific ISA flags. See [build and test instructions](docs/BUILD.md) for AVX2/AVX-512/portable configurations, presets, CLion, optional dependencies and test targets.
 
+## Start with a curve
+
+[`ladder::Curve`](ladder/curve.hpp) is a small, validated log-linear
+discount curve with factories for zero rates, discount factors and a flat
+rate. It has a consistent valuation origin, flat-forward extrapolation
+and exact bounded/open Hagan-wave bumps. It is **not** a calendar,
+market bootstrap or pricing-engine abstraction.
+
+The [minimal first-order example](examples/curve_intro/README.md)
+constructs a curve, discounts three cashflows, computes all wave
+sensitivities in one reverse scan and checks them by repricing.
+New readers should start there before the more involved grouped
+and second-order demonstrations.
+
 ## Algorithms and contracts
 
 The header-only API is in namespace `ladder` (CMake interface target `ladder::ladder`).

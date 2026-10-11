@@ -53,6 +53,20 @@ The other presets are `release-avx2`, `release-avx512`, `release-portable` and `
 
 `LADDER_BUILD_PAPER_BENCHMARKS=ON` needs the GCC/Clang paper-benchmark dependencies, an x86 target and `<experimental/simd>`. Under the dual-ISA preset, CMake can also enable these targets when its dependency checks succeed. Missing optional tools must not be mistaken for a failure of the portable library.
 
+## The curve example
+
+The standalone [curve introduction](../examples/curve_intro/README.md)
+is built with the ordinary example targets:
+
+```sh
+cmake --build build --target curve_intro
+./build/examples/curve_intro/curve_intro
+```
+
+`test_curve` exercises curve factories, shifted first boundaries, the
+valuation origin, zero/simple-forward rates, bounded/open final-wave
+shocks, and agreement with the production scalar scan.
+
 ## Correctness tests
 
 The standard suites cover scalar/grouped discount and projection risk, wave boundaries, malformed inputs, first-order portfolio reduction, optional grouped gamma and its scalar oracle, example smoke tests, and the recorded financial fixtures. Some tests also require Python 3, using only its standard library.
