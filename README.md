@@ -24,6 +24,13 @@ ctest --test-dir build --output-on-failure
 
 ISA selection (AVX2, AVX-512, portable), presets, Windows and CLion notes: [docs/BUILD.md](docs/BUILD.md).
 
+## Optional: cross-gamma
+
+An opt-in second-order layer (full Hessian, diagonal gamma, OIS lag correction, matrix-free
+Hessian-vector product) built on the same ladder. On a 100,000-cashflow, 66-bucket book it is about 80-90x
+faster than a direct analytic Hessian and about 5,000x faster than central bump-and-reprice (one aggregated
+66 x 66 Hessian, this machine; caveats in [docs/CROSS_GAMMA.md](docs/CROSS_GAMMA.md)).
+
 ## Scope and limitations
 
 - Zero curves only: the caller supplies boundary times and discount factors (or zero rates). There are no
