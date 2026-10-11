@@ -59,5 +59,8 @@ The initial integration gates above document their historical status.
 The independent QuantLib Python 1.43 tests subsequently passed for the
 standard and stressed OIS cross-gamma pair, with full numeric evidence in
 [the dated record](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md).
-An interior-wave **diagonal** lag check, comprehensive contract/fixing
-coverage and stage-2 full grouped risk remain separate matters.
+The subsequent [live QuantLib Actions run 38100830063](https://github.com/andyD123/data-oriented-curve-risk/actions/runs/38100830063)
+also passed a genuinely nonzero interior-wave diagonal correction and
+all 15 unique elements of that coupon's 5x5 Hessian. Stage-2 grouped
+execution is developed separately on draft PR #4; comprehensive
+contract/fixing coverage is still outside scope.
