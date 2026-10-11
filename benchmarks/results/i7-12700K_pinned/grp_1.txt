@@ -1,0 +1,36 @@
+bench_library: curve sensitivities for a seasoned book, single thread
+build:   AVX2 + FMA intrinsics backend; GCC 13.3.0
+book:    500,000 instruments (bonds, IBOR swaps, OIS swaps); 9,310,805 cashflows, 18.6 per instrument
+outputs: 66 sensitivities per instrument (30 discount-curve nodes + 36 projection-curve nodes); 33,000,000 values, 264.0 MB
+
+terms
+  output            one sensitivity: one instrument against one curve node
+  SCAN              reference method: scalar ladder, one instrument at a time
+  GRP               grouped method: 8 instruments at a time, one per SIMD lane
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  per curve update  work that is repeated every time the curves change
+  time              wall clock, best of 1 run
+
+result: cost of one curve update                       time     per output
+  SCAN  replication + scalar ladder                444.82 ms     13.479 ns
+  GRP   date-table refresh + kernel                 34.03 ms      1.031 ns
+  GRP is 13.1x faster than SCAN per curve update
+
+breakdown
+  SCAN  replication of unit cashflows (1)          270.92 ms     29.097 ns per cashflow
+  SCAN  scalar ladder                              173.90 ms      5.270 ns per output
+  GRP   kernel, normal stores                      109.94 ms      3.332 ns per output
+  GRP   kernel, streaming stores (2)                33.37 ms      1.011 ns per output   <- used in result
+  (1) each cashflow is re-expressed as unit cashflows whose amounts depend on the curves, so it is redone per update
+  (2) streaming (non-temporal) stores write the output straight to memory, bypassing the cache
+
+accuracy
+  GRP vs SCAN max difference 3.5e-15 (relative to each instrument's largest sensitivity)
+
+setup (one-off, not repeated per curve update)
+  first replication 524 ms (includes memory allocation); group layout 860 ms
+  3,638 unique payment dates in the date table; 64,750 groups of 8
+  lane occupancy 96.5% (share of SIMD lanes holding a real instrument)
+  storage 273.5 MB padded vs 264.0 MB logical (+3.6% for empty lanes)
+
+correctness gate: PASS (GRP agrees with SCAN to 1e-9 relative; every value finite)

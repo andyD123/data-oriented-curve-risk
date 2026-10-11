@@ -46,17 +46,6 @@
         "LADDER_LANES": "PORTABLE",
         "CMAKE_CONFIGURATION_TYPES": "Release"
       }
-    },
-    {
-      "name": "release-paper",
-      "inherits": "release-avx512",
-      "displayName": "Release (AVX-512 paper benchmarks)",
-      "binaryDir": "${sourceDir}/build/release-paper",
-      "cacheVariables": {
-        "LADDER_BUILD_PAPER_BENCHMARKS": "ON",
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CONFIGURATION_TYPES": "Release"
-      }
     }
   ],
   "buildPresets": [
@@ -78,11 +67,6 @@
     {
       "name": "release-portable",
       "configurePreset": "release-portable",
-      "configuration": "Release"
-    },
-    {
-      "name": "release-paper",
-      "configurePreset": "release-paper",
       "configuration": "Release"
     }
   ],
@@ -114,14 +98,6 @@
     {
       "name": "release-portable",
       "configurePreset": "release-portable",
-      "output": {
-        "outputOnFailure": true
-      },
-      "configuration": "Release"
-    },
-    {
-      "name": "release-paper",
-      "configurePreset": "release-paper",
       "output": {
         "outputOnFailure": true
       },

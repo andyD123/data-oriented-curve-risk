@@ -38,6 +38,7 @@
   inline void vstore(double* p, vec8 a)        { _mm512_store_pd(p, a.v); }
   inline void vstore_stream(double* p, vec8 a) { _mm512_stream_pd(p, a.v); }
   inline void vfence()                         { _mm_sfence(); }
+  inline double vhsum(vec8 a)                  { return _mm512_reduce_add_pd(a.v); }
   }
 
 #elif defined(LADDER_LANES_AVX2)
@@ -54,6 +55,14 @@
   inline void vstore(double* p, vec8 a)        { _mm256_store_pd(p, a.lo); _mm256_store_pd(p + 4, a.hi); }
   inline void vstore_stream(double* p, vec8 a) { _mm256_stream_pd(p, a.lo); _mm256_stream_pd(p + 4, a.hi); }
   inline void vfence()                         { _mm_sfence(); }
+  inline double vhsum(vec8 a) {
+      __m256d s = _mm256_add_pd(a.lo, a.hi);
+      __m128d lo = _mm256_castpd256_pd128(s);
+      __m128d hi = _mm256_extractf128_pd(s, 1);
+      __m128d sum2 = _mm_add_pd(lo, hi);
+      __m128d sum1 = _mm_add_sd(sum2, _mm_unpackhi_pd(sum2, sum2));
+      return _mm_cvtsd_f64(sum1);
+  }
   }
 
 #elif defined(LADDER_LANES_PORTABLE)
@@ -69,6 +78,7 @@
   inline void vstore(double* p, vec8 a)        { for (int i = 0; i < 8; ++i) p[i] = a.v[i]; }
   inline void vstore_stream(double* p, vec8 a) { vstore(p, a); }       // no streaming store without intrinsics
   inline void vfence()                         {}
+  inline double vhsum(vec8 a)                  { double s = 0.0; for (int i = 0; i < 8; ++i) s += a.v[i]; return s; }
   }
 
 #else   // LADDER_LANES_STDX (default)
@@ -101,6 +111,11 @@
   #if defined(__AVX512F__) || defined(__AVX2__)
       _mm_sfence();
   #endif
+  }
+  inline double vhsum(vec8 a) {
+      double s = 0.0;
+      for (size_t i = 0; i < 8; ++i) s += a.v[i];
+      return s;
   }
   }
 #endif

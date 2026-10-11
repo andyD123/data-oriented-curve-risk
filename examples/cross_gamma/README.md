@@ -9,8 +9,6 @@ scan supplies just K diagonal second moments. Nonlinear payment-lag OIS coupons
 need an additional compact rank-two correction.
 
 Source: [cross_gamma_example.cpp](cross_gamma_example.cpp).
-The companion [QuantLib reconciliation project](quantlib/README.md) explains the
-independent recorded and optional live comparisons.
 
 ## Build and run
 
@@ -26,14 +24,11 @@ The example also has its own CMake target and small CTest smoke test:
 
 ```sh
 cmake -S . -B build-gamma -DLADDER_LANES=PORTABLE \
-  -DLADDER_BUILD_EXAMPLES=ON -DLADDER_BUILD_QUANTLIB=OFF
-cmake --build build-gamma --target cross_gamma_example \
-  test_cross_gamma test_cross_gamma_quantlib_archive
+  -DLADDER_BUILD_EXAMPLES=ON
+cmake --build build-gamma --target cross_gamma_example test_cross_gamma
 ctest --test-dir build-gamma --output-on-failure -R '^cross_gamma'
 ./build-gamma/examples/cross_gamma/cross_gamma_example
 ```
-
-No QuantLib package is required for this C++ example.
 
 ## Portfolio and the wave grid
 
@@ -172,30 +167,11 @@ expressions. In the locally executed portable example:
 - Maximum relative matrix-free Hessian-vector error: **3.1e-15**.
 - The example exits with a nonzero code when checks fail.
 
-## What QuantLib establishes
+## What is verified
 
-See [quantlib/README.md](quantlib/README.md) for two distinct methods.
-
-1. The repo's existing real QuantLib v1.33 five-year, two-business-day-lag OIS
-   export is checked by
-   [test_cross_gamma_quantlib_archive.cpp](../../tests/test_cross_gamma_quantlib_archive.cpp).
-   It validates the first-order scan against *recorded QuantLib finite
-   differences*. The second derivative is compared to direct analytic
-   differentiation and repricing of the original exported coupon formula.
-2. The optional
-   [live_ois_cross_gamma.py](quantlib/live_ois_cross_gamma.py)
-   creates an actual QuantLib overnight coupon, bumps log-discount curves,
-   and prepares a **live** second-order finite-difference reconciliation.
-   The authoring environment lacked QuantLib, but an independent
-   cloud Linux run used **QuantLib Python 1.43**.
-   Standard, stressed, and now an **interior-bucket** OIS case passed live
-   QuantLib 1.43 finite differences. The third case independently validates
-   the nonzero diagonal lag correction and all 15 unique elements of its
-   5x5 Hessian. The externally supplied numerical
-   evidence is transcribed in
-   [the validation record](../../docs/QUANTLIB_LIVE_OIS_GAMMA.md).
-   This validates the specific fully forecast, same-curve model and selected
-   cross-wave pair, not every OIS convention or stochastic convexity.
+The reduced form is checked against the direct analytic Hessian and against repricing of the coupon formula (see
+`tests/test_cross_gamma.cpp`). This validates the specific fully forecast, same-curve model and selected
+cross-wave pairs, not every OIS convention or stochastic convexity.
 
 This does not claim that stochastic payment-delay convexity corrections,
 historical fixings, lockouts, observation shifts, cross-curve IBOR products,

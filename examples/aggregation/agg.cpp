@@ -33,7 +33,7 @@ Inputs prepare_inputs(std::size_t count)
 {
     Inputs input;
     for (int wave = 0; wave < wave_count; ++wave) {
-        input.labels.push_back((wave < 30 ? "EONIA_" : "EUR6M_")
+        input.labels.push_back((wave < 30 ? "DISC_" : "FWD_")
                                + std::to_string(wave) + "M");
     }
     std::mt19937_64 random(1);

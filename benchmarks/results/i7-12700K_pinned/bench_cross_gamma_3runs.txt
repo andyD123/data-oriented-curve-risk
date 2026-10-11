@@ -1,0 +1,12 @@
+N=100000 K=66 seed=20261010 repricings=8713
+structured_ms=0.479519 direct_analytic_ms=17.193920 bump_precompute_ms=23.110100 bump_reprice_ms=2492.314814
+analytic_speedup=35.86x bump_speedup=5245.73x relative_error_analytic=1.57398883e-14 relative_error_fd=1.54918211e-06 witness=-3.49679628e-05
+aad_tape_nodes=7012557 aad_record_ms=100.325 aad_hessian_ms=4896.670 (66 forward-over-reverse passes) aad_total_ms=4996.994 aad_vs_structured=10421x relative_error_aad=4.52e-15
+N=100000 K=66 seed=20261010 repricings=8713
+structured_ms=0.520656 direct_analytic_ms=19.155088 bump_precompute_ms=22.834646 bump_reprice_ms=2599.788583
+analytic_speedup=36.79x bump_speedup=5037.15x relative_error_analytic=1.57398883e-14 relative_error_fd=1.54918211e-06 witness=-3.49679628e-05
+aad_tape_nodes=7012557 aad_record_ms=90.251 aad_hessian_ms=5719.006 (66 forward-over-reverse passes) aad_total_ms=5809.258 aad_vs_structured=11158x relative_error_aad=4.52e-15
+N=100000 K=66 seed=20261010 repricings=8713
+structured_ms=0.493934 direct_analytic_ms=21.081872 bump_precompute_ms=28.985006 bump_reprice_ms=2627.399779
+analytic_speedup=42.68x bump_speedup=5378.02x relative_error_analytic=1.57398883e-14 relative_error_fd=1.54918211e-06 witness=-3.49679628e-05
+aad_tape_nodes=7012557 aad_record_ms=105.441 aad_hessian_ms=4434.809 (66 forward-over-reverse passes) aad_total_ms=4540.250 aad_vs_structured=9192x relative_error_aad=4.52e-15

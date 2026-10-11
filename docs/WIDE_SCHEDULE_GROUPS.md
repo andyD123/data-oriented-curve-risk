@@ -177,7 +177,7 @@ Configure an explicit backend and build the experiment:
 
 ```sh
 cmake -S . -B build-avx2 -DCMAKE_BUILD_TYPE=Release \
-  -DLADDER_LANES=AVX2 -DLADDER_BUILD_QUANTLIB=OFF \
+  -DLADDER_LANES=AVX2 \
   -DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON
 cmake --build build-avx2 --target wide_group_bench --parallel 2
 ./build-avx2/examples/benchmark/wide_group_bench 65536 9

@@ -2,13 +2,23 @@ build*/
 cmake-build-*/
 .idea/
 stash/
-examples/**/bench_paper
 examples/**/scenario_bench
 examples/**/adjoint_bench
 examples/**/bench
-examples/**/ql_waves
 examples/**/scan_wave
-examples/**/ql_examples
-examples/**/scan_reconcile
 test_ladder
 .vs/
+__pycache__/
+*.pyc
+node_modules/
+*.aux
+*.log
+*.out
+*.toc
+TASKS.md
+examples/benchmark/rfr_curves_boe.txt
+
+# BoE-derived data: licence limits redistribution; keep local only
+examples/benchmark/rfr_curves_boe.txt
+benchmarks/results/*boe*/
+oisddata.zip

@@ -1,5 +1,5 @@
 """Replay immutable fixtures in a temporary directory; failures are process failures.
-Only the Python standard library is required. This does not run QuantLib.
+Only the Python standard library is required. Fully standalone test suite.
 """
 from pathlib import Path
 import math
@@ -73,7 +73,7 @@ def main():
             raise AssertionError('scan differs from independent direct-overlap oracle')
         reference = matrix(fixture/'wave_risk_5e-05.txt')
         if not agree(actual,reference,rel=2e-7):
-            raise AssertionError('scan differs from recorded QuantLib finite differences')
+            raise AssertionError('scan differs from recorded reference finite differences')
         worst = max(abs(a-b)/max(1.,max(map(abs,e))) for row,e in zip(actual,expected) for a,b in zip(row,e))
         print(f'replayed {len(actual)} instruments; max scaled direct-oracle error {worst:.3e}')
         # Check that the gate itself rejects NaNs, wrong values and truncated rows.

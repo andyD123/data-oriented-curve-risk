@@ -1,0 +1,2 @@
+copy_floor: 273504000 bytes (260.83 MiB), best of 15
+memcpy: 18.948 ms, 14.43 GB/s copied (28.87 GB/s read+write)

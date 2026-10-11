@@ -1,0 +1,7 @@
+100000 instruments x 66 sensitivities, book-level aggregation (one core):
+  contiguous ordered ladders, vector add            3.32 ms   (0.50 ns/value)
+  contiguous, two-level hierarchy (book, desk)      3.74 ms
+  std::unordered_map per instrument               185.2 ms   56x slower
+  std::map per instrument                         262.4 ms   79x slower
+  memory: flat 53 MB vs maps ~581 MB (historical node-size estimate)
+correctness gate: PASS (all representations and desk totals checked)

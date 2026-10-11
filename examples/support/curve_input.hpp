@@ -1,9 +1,8 @@
 #pragma once
 
-// Read the two curve sections of the recorded QuantLib export. Later sections of
+// Read the two curve sections of the recorded market curves. Later sections of
 // that historical file contain instruments; these demonstrators do not read them.
-// The benchmark curve is log-linear on the exported discount factors. It is not
-// the live QuantLib pricing object used by the separate reconciliation harness.
+// The benchmark curve is log-linear on the exported discount factors.
 #include "ladder/stencil.hpp"
 #include <cmath>
 #include <cstdio>

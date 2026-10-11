@@ -1,44 +1,5 @@
 # Reading the demonstrators
 
-## Reproduce the article's comparisons
-
-Start with [`benchmark_paper/run_comparisons.py`](benchmark_paper/run_comparisons.py): from the repository root, run `python3 examples/benchmark_paper/run_comparisons.py --suite all`. It builds the existing paper, scenario-cache, adjoint and aggregation executables, runs small matched-input comparisons, checks their numerical output and saves raw logs and a source/machine manifest. Use `--full` only for the much heavier 500,000-instrument run. See the [paper benchmark guide](benchmark_paper/README.md#reader-run-comparisons-from-the-article) for ISA/toolchain requirements and scope limits.
-
-
-## Start here for first-order curve risk
-
-[The minimal curve example](curve_intro/README.md) shows
-`Curve::flat`, `replicate_fixed`, `scan_discount` and the exact
-box-wave-bumped repricing oracle without QuantLib or any grouped layout.
-It is the recommended introduction for a new reader.
-
-## Start here for second-order curve risk
-
-[**The 16-bucket cross-gamma example**](cross_gamma/README.md) is the
-simplest entry point for the new Hessian work. It presents ten fixed cashflows,
-two OIS coupons (with and without payment lag), the first-order ladder, a
-separate second-moment diagonal pass, off-diagonal reconstruction and
-matrix-free Hessian-vector products. Its +50 bp two-wave scenario makes
-cross-gamma a visible **monetary** risk, rather than just a derivative matrix.
-
-Readers wanting an independent financial-library check can proceed to the
-[**QuantLib reconciliation project**](cross_gamma/quantlib/README.md):
-the recorded five-year lagged-OIS first-order wave fixture is executable
-without QuantLib, while the separate optional Python runner constructs a
-real QuantLib overnight coupon for a second-order check. The standard,
-stressed and interior-bucket tests are exercised in the focused CI workflow.
-
-## Portfolio-only reduction and independent RFR replay
-
-- [Portfolio reduction](../ladder/scan_grouped_reduce.hpp) directly accumulates
-  the existing eight-lane discount and projection ladders. The
-  [opt-in benchmark](benchmark/bench_grouped_reduce.cpp) compares direct
-  portfolio risk to writing and then aggregating every instrument's risk.
-- [RFR reconciliation](rfr_reconcile/README.md) generates a complete illustrative
-  overnight-indexed curve and instrument book with no QuantLib dependency.
-  The CTest checks both the retained reference fixtures and a fresh generated
-  book, including quote-risk Jacobian and the negative spline control.
-
 Start with `run_experiment` in each `.cpp`. It shows the calculation being compared;
 clock reads, repetition and minimum-time selection live in
 [`support/timing.hpp`](support/timing.hpp).
@@ -66,7 +27,7 @@ and inspect their outputs; a discarded pure return value is not a useful benchma
    The two paths supply different column-lookup lambdas, not different pricing code.
 3. [`scenario_book.hpp`](benchmark_paper/scenario_book.hpp) constructs the synthetic
    schedules and the three processing orders. It preserves this example's original
-   random draw order and day rounding; these are not QuantLib-generated calendars.
+   random draw order and day rounding; these are synthetic calendars.
 4. [`scenario_cache.hpp`](benchmark_paper/scenario_cache.hpp) contains only the LRU
    bookkeeping. Pricing sees `fetch(date, fill_column)`.
 5. [`scenario_report.hpp`](benchmark_paper/scenario_report.hpp) contains the console
@@ -78,7 +39,7 @@ to let the second fetch overwrite the first column. The 64-column example is unc
 The scenario columns are contiguous `std::vector<double>` storage; this code does not
 claim that the allocator provides 64-byte alignment.
 
-## Scan, direct overlap and recorded reverse mode
+## Scan, direct overlap and reverse mode with a tape
 
 [`benchmark_paper/adjoint_bench.cpp`](benchmark_paper/adjoint_bench.cpp) names each
 operation separately: `make_risk_records`, `scan_gradient`, `direct_gradient`,
@@ -103,18 +64,3 @@ The default remains 100,000 instruments and 66 values each. The default hierarch
 contains 200 books of 500 instruments, then 20 desks of 10 books. An optional smaller
 instrument count is useful for tests. Clearing and rebuilding the result containers
 remains inside the timed operations.
-
-## Grouped execution and API contracts
-
-The [grouped data-flow guide](../docs/GROUPED_DATA_FLOW.md) explains
-`InstrumentSpec → GroupLayout → refresh_table → grouped output`,
-eight-lane packing, wave-traversal invariants, output ownership and
-checked span overloads. The original per-trade and portfolio-reduction
-algorithms now use the same numerical coupon/traversal functions.
-
-The existing paper timing evidence still refers to its **recorded**
-integrated-forward coordinate convention. The current library's
-forward-wave derivatives use a different unit convention; see
-[BENCHMARKS.md](../BENCHMARKS.md) for separate comparison contracts.
-The demonstrations do not imply a general quote-rebootstrap or
-multi-curve second-order pricing engine.

@@ -1,0 +1,35 @@
+== N=10000
+book:    10,000 instruments (bonds, IBOR swaps, OIS swaps); 188,286 cashflows, 18.8 per instrument
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  GRP   date-table refresh + kernel                  1.63 ms      2.468 ns
+  GRP   kernel, streaming stores (2)                 1.54 ms      2.333 ns per output   <- used in result
+  3,636 unique payment dates in the date table; 4,482 groups of 8
+  lane occupancy 27.9% (share of SIMD lanes holding a real instrument)
+== N=30000
+book:    30,000 instruments (bonds, IBOR swaps, OIS swaps); 560,729 cashflows, 18.7 per instrument
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  GRP   date-table refresh + kernel                  3.42 ms      1.728 ns
+  GRP   kernel, streaming stores (2)                 3.33 ms      1.683 ns per output   <- used in result
+  3,638 unique payment dates in the date table; 5,876 groups of 8
+  lane occupancy 63.8% (share of SIMD lanes holding a real instrument)
+== N=100000
+book:    100,000 instruments (bonds, IBOR swaps, OIS swaps); 1,857,282 cashflows, 18.6 per instrument
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  GRP   date-table refresh + kernel                  8.52 ms      1.292 ns
+  GRP   kernel, streaming stores (2)                 8.44 ms      1.278 ns per output   <- used in result
+  3,638 unique payment dates in the date table; 14,794 groups of 8
+  lane occupancy 84.5% (share of SIMD lanes holding a real instrument)
+== N=300000
+book:    300,000 instruments (bonds, IBOR swaps, OIS swaps); 5,588,334 cashflows, 18.6 per instrument
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  GRP   date-table refresh + kernel                 24.68 ms      1.247 ns
+  GRP   kernel, streaming stores (2)                24.59 ms      1.242 ns per output   <- used in result
+  3,638 unique payment dates in the date table; 39,831 groups of 8
+  lane occupancy 94.1% (share of SIMD lanes holding a real instrument)
+== N=500000
+book:    500,000 instruments (bonds, IBOR swaps, OIS swaps); 9,310,805 cashflows, 18.6 per instrument
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  GRP   date-table refresh + kernel                 34.92 ms      1.058 ns
+  GRP   kernel, streaming stores (2)                34.78 ms      1.054 ns per output   <- used in result
+  3,638 unique payment dates in the date table; 64,750 groups of 8
+  lane occupancy 96.5% (share of SIMD lanes holding a real instrument)

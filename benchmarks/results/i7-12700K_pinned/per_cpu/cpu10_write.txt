@@ -1,0 +1,2 @@
+write_floor: 273504000 bytes (260.83 MiB), best of 15
+write-only stores: 10.015 ms, 27.31 GB/s

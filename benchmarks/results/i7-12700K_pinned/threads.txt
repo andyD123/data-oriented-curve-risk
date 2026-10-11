@@ -1,0 +1,44 @@
+bench_library: curve sensitivities for a seasoned book, single thread
+build:   AVX2 + FMA intrinsics backend; GCC 13.3.0
+book:    500,000 instruments (bonds, IBOR swaps, OIS swaps); 9,310,805 cashflows, 18.6 per instrument
+outputs: 66 sensitivities per instrument (30 discount-curve nodes + 36 projection-curve nodes); 33,000,000 values, 264.0 MB
+
+thread scaling (streaming kernel, groups split into equal contiguous ranges, best of 15)
+   1 thread       29.08 ms    0.881 ns per output   9.41 GB/s written
+   2 threads      21.05 ms    0.638 ns per output  13.00 GB/s written
+   4 threads      19.05 ms    0.577 ns per output  14.36 GB/s written
+   6 threads      19.08 ms    0.578 ns per output  14.33 GB/s written
+   8 threads      18.44 ms    0.559 ns per output  14.83 GB/s written
+  12 threads      17.18 ms    0.521 ns per output  15.92 GB/s written
+
+terms
+  output            one sensitivity: one instrument against one curve node
+  SCAN              reference method: scalar ladder, one instrument at a time
+  GRP               grouped method: 8 instruments at a time, one per SIMD lane
+  date table        discount and projection factors at each unique payment date, shared by all groups
+  per curve update  work that is repeated every time the curves change
+  time              wall clock, best of 15 runs
+
+result: cost of one curve update                       time     per output
+  SCAN  replication + scalar ladder                435.82 ms     13.207 ns
+  GRP   date-table refresh + kernel                 28.64 ms      0.868 ns
+  GRP is 15.2x faster than SCAN per curve update
+
+breakdown
+  SCAN  replication of unit cashflows (1)          267.12 ms     28.689 ns per cashflow
+  SCAN  scalar ladder                              168.70 ms      5.112 ns per output
+  GRP   kernel, normal stores                       36.73 ms      1.113 ns per output
+  GRP   kernel, streaming stores (2)                28.55 ms      0.865 ns per output   <- used in result
+  (1) each cashflow is re-expressed as unit cashflows whose amounts depend on the curves, so it is redone per update
+  (2) streaming (non-temporal) stores write the output straight to memory, bypassing the cache
+
+accuracy
+  GRP vs SCAN max difference 3.5e-15 (relative to each instrument's largest sensitivity)
+
+setup (one-off, not repeated per curve update)
+  first replication 544 ms (includes memory allocation); group layout 995 ms
+  3,638 unique payment dates in the date table; 64,750 groups of 8
+  lane occupancy 96.5% (share of SIMD lanes holding a real instrument)
+  storage 273.5 MB padded vs 264.0 MB logical (+3.6% for empty lanes)
+
+correctness gate: PASS (GRP agrees with SCAN to 1e-9 relative; every value finite)

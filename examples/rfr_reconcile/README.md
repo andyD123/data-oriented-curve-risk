@@ -1,23 +1,23 @@
 # RFR reconciliation (single overnight-indexed curve)
 
-A standalone, dependency-free reference extracted from PR #2 by damian123 for the reconciliation in the paper's Section 11, on a single
-SOFR-style discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
+A custom, dependency-free reference written by the authors for the reconciliation in the paper's Section 11, on a single
+single overnight-indexed discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
 coupon is `N (D(a)/D(b) - 1)` paid at `p`.
 
-The par OIS quotes in `rfr_reference.py` are **illustrative, not a market snapshot**. Times are years from the
+The par OIS quotes in `rfr_reference.py` are an **invented placeholder** so the replay test runs without third-party data; `generate --curve FILE` derives the quotes from a curve file instead (the published reconciliation used the Bank of England SONIA curve, see docs/BOE_CURVE.md). Times are years from the
 valuation date, and no calendar logic is involved.
 
 | file | role |
 |---|---|
 | `rfr_reference.py generate` | bootstrap (log-linear discount factors), value the book, export unit cashflows, write finite-difference wave risk at five bump sizes |
-| `scan_rfr <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
+| `scan_wave <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
 | `rfr_reference.py check` | direct-overlap oracle, explicit adjoint, finite-difference convergence, quote risk (wave risk x bootstrap Jacobian vs re-bootstrap) and the Hagan hedge solve |
 
-Run `ctest -R rfr_reconcile_replay`, which checks both the committed fixture and a freshly generated fixture, or run the three commands by hand:
+Run `ctest -R rfr_reconcile_replay`, or by hand:
 
 ```sh
 python3 examples/rfr_reconcile/rfr_reference.py generate /tmp/rfr
-build/examples/rfr_reconcile/scan_rfr /tmp/rfr
+build/examples/rfr_reconcile/scan_wave /tmp/rfr
 python3 examples/rfr_reconcile/rfr_reference.py check /tmp/rfr
 ```
 

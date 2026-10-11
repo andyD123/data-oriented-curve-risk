@@ -1,0 +1,15 @@
+15 independent processes, 1 repetition each (ms)
+GRP date table + kernel (stream)   n=15 median     31.59  min     29.84  max     48.10  spread  57.8%
+GRP kernel normal stores           n=15 median    100.82  min     94.81  max    111.77  spread  16.8%
+GRP kernel streaming stores        n=15 median     31.02  min     29.33  max     47.43  spread  58.3%
+SCAN replication + ladder          n=15 median    448.11  min    431.08  max    468.88  spread   8.4%
+SCAN scalar ladder                 n=15 median    173.90  min    165.08  max    191.63  spread  15.3%
+
+3 full runs (best of 3 inside each) (ms)
+BASE                               n= 3 median  22929.35  min  22715.33  max  23161.16  spread   1.9%
+SOA                                n= 3 median  22353.60  min  21983.92  max  22698.13  spread   3.2%
+TABLE                              n= 3 median   1720.13  min   1711.47  max   1791.53  spread   4.7%
+SCAN                               n= 3 median    438.90  min    437.73  max    448.98  spread   2.6%
+GRP                                n= 3 median     32.97  min     29.59  max     34.51  spread  14.9%
+write_floor.txt ['7.426', '7.365', '7.440']
+copy_floor.txt ['18.299', '18.863', '18.845']

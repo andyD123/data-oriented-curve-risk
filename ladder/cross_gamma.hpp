@@ -2,7 +2,7 @@
 // Optional discounted-cashflow Hagan-wave diagonal gamma and cross-gamma.
 // Public wave indices in this header are zero-based; Stencils overlaps are
 // one-based internally. Not a general nonlinear coupon or quote Hessian.
-// Mathematical contract and live reference checks: docs/GROUPED_CROSS_GAMMA_STAGE2.md.
+// Provenance: docs/LARS_CROSS_GAMMA_BRANCH.md.
 #include <algorithm>
 #include <cmath>
 #include <limits>

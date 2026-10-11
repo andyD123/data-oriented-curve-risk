@@ -1,66 +1,29 @@
-# benchmark_paper — the §9 workload and historical timing record
+# benchmark_paper: adjoint comparison, write-only reference, LRU date cache
 
-Reproduces the table in §9 of the paper: 500,000 instruments, half semi-annual fixed-rate bonds and half
-annual-30/360-vs-6M-Act/360 swaps, maturities 1–29y, on the Eonia/Euribor6M curves of QuantLib's
-MulticurveBootstrapping example (`quantlib_example_curves.txt`, 30 + 36 forward buckets), 66 sensitivities
-per instrument, streaming output. The current source reports first derivatives per unit
-instantaneous-forward-rate shift, matching the library and manuscript. The committed 50.9 ms record is older:
-that historical executable used interval-integrated-forward coordinates. The two outputs differ only by the
-known bucket-length scaling, but the old timing is kept as historical evidence and is not relabelled as a fresh
-run of the current source. The broader library/OIS workload is separate — do not mix the generations.
-
-
-## Reader-run comparisons from the article
-
-The one-command [comparison runner](run_comparisons.py) invokes existing, correctness-checked C++ executables rather than a reconstructed or hard-coded timing table. Start with a small book, on x86-64 hardware capable of AVX-512 and a GCC/Clang C++20 toolchain with `<experimental/simd>`:
-
-```sh
-# From repository root; configures and builds the relevant Release target automatically
-python3 examples/benchmark_paper/run_comparisons.py                  # 2,000 trades, bump/reprice vs scan and grouped SIMD
-python3 examples/benchmark_paper/run_comparisons.py --suite all      # add date-cache ordering, adjoint and aggregation
-python3 examples/benchmark_paper/run_comparisons.py --suite all --full # 500,000 trades; can be slow and memory-intensive
-python3 examples/benchmark_paper/run_comparisons.py --suite write-floor --full
-```
-
-The first suite compares `BASE` central-difference wave repricing, `SCAN`, and eight-lane grouped kernels under the same generated paper-book contract. The `cache` suite compares random, sorted and schedule-grouped processing under the same 64-column scenario cache. `adjoint` contrasts a tape-free direct-overlap calculation, the scalar library scan and a deliberately simple recorded-tape prototype. `aggregation` compares contiguous arrays, ordered maps and hash maps with identical sensitivity inputs. `write-floor` only times streaming writes for the **500,000-instrument padded output byte count**; it is neither a memory-copy baseline nor a calculation that reads risk inputs.
-
-For `--suite all --full`, the aggregation example uses **100,000 instruments by default**, while the paper/cache/adjoint examples use 500,000: 500,000 instruments in both associative maps can require several gigabytes. Override this separately with `--aggregation-instruments N` when you have the RAM and want a different aggregation population. Each numerical comparison reports a correctness gate and fails with a nonzero status on disagreement. The driver preserves raw console logs and a `manifest.json` with the source revision, platform, arguments and commands under `build/paper-comparisons/reader-results/`. Pass `--build-dir` or `--output-dir` to change the location; `--no-build` uses prebuilt Release executables. These tests do **not** all time the same phase of one algorithm. Never divide runtimes from different suites as though they were a controlled A/B comparison.
-
-**Provenance:** the original 50.9 ms paper log is historical evidence from an interval-integrated-forward (`theta`) coordinate, whereas these current-source examples return first derivatives per unit instantaneous-forward shift. The financial outputs are related by bucket widths, but current timings must be reported as new observations on the executing machine. The recorded results, [measurement definitions](../../BENCHMARKS.md) and cross-gamma examples remain separate evidence.
-
-```
-g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -Wno-unused-result bench_paper.cpp -o bench_paper
-./bench_paper 500000 1 3        # N, run baseline (1/0), repetitions
-```
-Recorded run (`recorded_500k.txt`, one Sapphire Rapids core, 2.1 GHz, VM): baseline 57,445 ms; scalar scan
-1,272 ms; 8-lane normal stores 61.4 ms; 8-lane streaming stores 50.9 ms (1.54 ns per sensitivity);
-64,034 groups, 97.6% lane occupancy; GRP vs scalar 3.4e-11; BASE vs scalar 2.7e-8.
-Historical write-only reference: 270 MiB in 15.7 ms on the same core. The original source/log for that
-measurement is not in this repository, so it is context rather than a self-contained reproduction. The
-manuscript also distinguishes 270 MiB from the benchmark's 270,479,616-byte padded output.
-
-`write_floor` is the current reproducible write-only benchmark. Its default byte count is exactly 270,479,616;
-pass `283115520` to measure 270 MiB. `recorded_write_floor_cloud.txt` is a separate cloud-host run and is
-explicitly not the historical 15.7 ms measurement.
-`recorded_sweep.txt` is the working-set staircase (10k–500k).
+Supporting benchmarks for the paper. They read the RFR curve in `rfr_curves.txt` from the working directory (30 + 36 forward buckets; the build writes a synthetic flat curve for tests, and the published results used the Bank of England SONIA curve, see docs/BOE_CURVE.md). All results quoted here are in
+[`benchmarks/results/i7-12700K/`](../../benchmarks/results/i7-12700K/): one thread, Intel
+i7-12700K (AVX2, no AVX-512), GCC 13.3, unpinned. The headline 500,000-instrument benchmark is
+`../benchmark/bench.cpp` (`bench_library`); see [BENCHMARKS.md](../../BENCHMARKS.md).
 
 ## Adjoint baselines (`adjoint_bench.cpp`)
 
-Same book and curves. Scalar, one core, replication excluded. `g++ -O3 -std=c++20 -march=native -I../.. adjoint_bench.cpp -o adjoint_bench && ./adjoint_bench 500000 2`
+Scalar, one core, replication excluded. `./adjoint_bench 500000 2`.
 
 | | 500k | ns / sensitivity |
 |---|---|---|
-| reverse scan, N+K | 431 ms | 13.1 |
-| tape-free N·K overlap adjoint (geometry known) | 726 ms | 22.0 |
-| reverse mode with a recorded tape (~2,500 nodes / instrument) | 8,784 ms | 266 |
+| reverse scan, N+K | 269.5 ms | 8.2 |
+| tape-free N·K overlap adjoint (geometry known) | 639.8 ms | 19.4 |
+| reverse mode with a recorded tape (960 nodes in the last instrument) | 5,402.9 ms | 163.7 |
 
-All agree to 4e-11. The recorded-tape timing includes expression construction, exponentials, tape recording
+All agree to about 3e-11. The recorded-tape timing includes expression construction, exponentials, tape recording
 and reverse traversal; this experiment does not isolate tape-memory traffic or establish the cost of other AAD
-implementations. The geometry-aware N·K adjoint is within 1.7x of the scan at scalar level.
+implementations. The geometry-aware N·K adjoint is within 2.4x of the scan at scalar level.
 
-The original raw log behind the historical 431/726/8784 ms row has not been recovered.
-`recorded_adjoint_500k_cloud.txt` is a separate current-source run on a different cloud host; it validates the
-comparison and correctness gate but does not replace the historical timings.
+## Write-only reference (`write_floor.cpp`)
+
+Streams zeros into a buffer of the size of the 500k book's padded output (273,504,000 bytes) with non-temporal
+stores (AVX-512 or AVX2; plain `memset` on a portable build). Three runs: 8.3 to 8.6 ms (about 32 GB/s) on this
+machine; further runs gave up to 10.2 ms. `./write_floor 273504000 15`.
 
 ## LRU date cache: grouping trades by shared schedule (`scenario_bench.cpp`)
 
@@ -95,104 +58,39 @@ discount curve plus 3,540 used by the projection curve).
 
 ### Reading the output
 
-A run prints five blocks. From the 500,000-trade run in the table below:
-
-```
-scenario_bench: wave scenarios priced from an LRU date cache, single thread
-build:     AVX-512 instructions; GCC 13.3.0
-book:      500,000 instruments (bonds and vanilla swaps); 3,540 distinct payment dates
-...
-result: LRU cache, cost of one curve update
-  columns     cache  order            time     per output        misses  hit rate
-       64     70 KB  random     15151.0 ms      459.12 ns    22,348,094    33.87%
-       64     70 KB  sorted      1663.6 ms       50.41 ns        10,500    99.97%
-       64     70 KB  grouped     1611.1 ms       48.82 ns         7,020    99.98%
-  at 64 columns: grouped is 9.4x faster than random, at the miss floor
-```
+A run prints five blocks:
 
 1. **Header**: the instruction set and compiler the binary was built with, the book, the 132 scenarios and the
-   33,000,000 sensitivities they produce (66 per instrument, from central differences of the up/down pairs).
+   sensitivities they produce (66 per instrument, from central differences of the up/down pairs).
 2. **terms**: definitions, including the miss floor for this book (7,020: 3,480 discount-curve dates plus 3,540
    projection-curve dates) and the three orders.
 3. **result**: the demonstration. One row per cache size and order; time is for one curve update, starting from an
    empty cache. The last lines give grouped against random at each cache size, and say when grouped is at the floor.
-   Above 100,000 trades the random rows below 1,024 columns are not run unless `LRU_ALL=1` is set, and the output
-   says so.
+   Above 100,000 trades the random rows below 1,024 columns are not run unless `LRU_ALL=1` is set.
 4. **context**: the same book priced from a full table (every date's column computed up front, no cache), the cost
-   of building that table per curve update, and the scalar reverse scan, which computes the sensitivities directly
-   without scenarios. With the baseline argument set to 1, a per-scenario repricing row (BASE) and speed-ups against
-   it are added.
-5. **accuracy and correctness gate**: every full-table and cache run, and BASE when it is run, is compared with
-   the scalar scan, relative to max(|value|, 1e4). The output gives the largest difference and the run it came
-   from; about 5e-8 is the truncation error of the central difference at eps = 1e-5. The gate fails if any run
-   differs by more than 1e-6 or produces a non-finite value; the program then names the run and exits with status 1.
+   of building that table per curve update, and the scalar reverse scan. With the baseline argument set to 1, a
+   per-scenario repricing row (BASE) and speed-ups against it are added.
+5. **accuracy and correctness gate**: every run is compared with the scalar scan, relative to max(|value|, 1e4).
+   About 5e-8 is the truncation error of the central difference at eps = 1e-5. The gate fails if any run differs
+   by more than 1e-6 or produces a non-finite value; the program then names the run and exits with status 1.
 
-Malformed arguments, curve files and `LRU_CAPS` values are rejected with a message and exit status 1. In the
-`release` preset on a machine with AVX-512, the CTest test `scenario_bench_gate_and_input_checks` runs a small gated
-case and those rejections.
+Malformed arguments, curve files and `LRU_CAPS` values are rejected with a message and exit status 1.
 
-### Results
-
-The manuscript has used more than one historical VM timing for the 64-column random/sorted comparison.
-The committed raw files are authoritative for their own runs; do not combine rows from different files into a
-single run identity. `recorded_lru_500k_cap64_both_orders.txt`, `recorded_lru_500k.txt` and the tables below are
-distinct observations. The ordering effect is reproducible; absolute VM timings vary substantially.
-
-
-![LRU date cache, 100,000 trades: time per curve update against cache capacity, random order and grouped by shared schedule](lru_cache_100k.svg)
+### Results (100,000 trades, `scenario_bench_100k.txt`)
 
 Three orders are measured: **random** (shuffled); **sorted** (instrument type, then start date, then tenor); and
 **grouped** (start date, then type, then tenor, so trades sharing a schedule are adjacent; a prototype ordering in the
 code). Misses are column evaluations, both curves together; time is per curve update, best of 3 runs.
 
-100,000 trades:
-
 | columns per curve | cache per curve | random: misses | random: time | sorted: misses | sorted: time | grouped: misses | grouped: time |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 17 KB | 5,185,875 | 3,248 ms | 4,778,344 | 3,005 ms | 4,778,344 | 3,065 ms |
-| 32 | 35 KB | 4,842,108 | 3,116 ms | 3,264,181 | 2,149 ms | 3,264,181 | 2,189 ms |
-| **64** | **70 KB** | **4,469,511** | **2,926 ms** | **10,500** | **272 ms** | **7,020** | **270 ms** |
-| 128 | 139 KB | 4,366,199 | 2,970 ms | 10,500 | 267 ms | 7,020 | 268 ms |
-| 256 | 279 KB | 4,154,015 | 2,780 ms | 10,500 | 268 ms | 7,020 | 287 ms |
-| 1,024 | 1.1 MB | 2,889,082 | 2,070 ms | 10,500 | 267 ms | 7,020 | 266 ms |
-| 4,096 | 4.5 MB | 7,020 | 328 ms | 7,020 | 308 ms | 7,020 | 304 ms |
+| 16 | 17 KB | 5,185,875 | 1,733 ms | 4,778,344 | 1,609 ms | 4,778,344 | 1,600 ms |
+| 32 | 35 KB | 4,842,108 | 1,657 ms | 3,264,181 | 1,183 ms | 3,264,181 | 1,170 ms |
+| **64** | **70 KB** | **4,469,511** | **1,575 ms** | **10,500** | **221 ms** | **7,020** | **217 ms** |
+| 128 | 139 KB | 4,366,199 | 1,565 ms | 10,500 | 220 ms | 7,020 | 215 ms |
 
-At 64 columns the hit rates are 33.8% random, 99.84% sorted and 99.90% grouped.
-
-500,000 trades, 64 columns per curve, best of 2 runs:
-
-| order | misses | hit rate | time |
-|---|---:|---:|---:|
-| random | 22,348,094 | 33.87% | 15,151 ms |
-| sorted | 10,500 | 99.97% | 1,664 ms |
-| grouped | 7,020 | 99.98% | 1,611 ms |
-
-At 64 columns, grouped order is 9.4x faster than random order at 500,000 trades and computes 3,184 times fewer
-columns. Its misses do not grow with the book (7,020 at both sizes), because they depend only on the number of
-distinct dates; random-order misses grow with the number of trades.
-
-The same 500,000-trade comparison on a second set-up (HP Omen 45L desktop with AVX-512, Windows, MSVC 19.44 with
-`/fp:contract`):
-
-| order | misses | hit rate | time |
-|---|---:|---:|---:|
-| random | 22,366,506 | 33.81% | 30,608 ms |
-| sorted | 10,500 | 99.97% | 3,030 ms |
-| grouped | 7,020 | 99.98% | 3,060 ms |
-
-Grouped is 10.0x faster than random there. Absolute times differ by about 2x between the two set-ups, which differ
-in both machine and compiler; the ratios and the sorted and grouped miss counts carry over. Before MSVC was given
-`/fp:contract`, the same rows took 5 to 15% longer on that machine. That is consistent with contraction allowing
-FMA instructions in the pricing loops, which are plain C++ that the compiler vectorises; the machine code was not
-inspected.
-
-The 100,000-trade table and the first 500,000-trade table were measured on one core of an Intel Xeon VM at 2.1 GHz
-(48 KB L1d, 2 MB L2), GCC 13.3, AVX-512. Miss counts and hit rates are deterministic for a given standard library
-(fixed seeds). The book and the random order are generated with `std::uniform_int_distribution` and `std::shuffle`,
-whose algorithms differ between standard libraries, so the random-order miss count differs slightly between GCC and
-MSVC builds (22,348,094 and 22,366,506 above). Times vary between runs, by 20% or more on the VM. The two recorded
-500,000-trade runs at 64 columns, sorted (`recorded_lru_500k_cap64_both_orders.txt` and `recorded_lru_500k.txt`),
-differ by a factor of two.
+At 64 columns grouped is 7.3x faster than random and at the miss floor. For comparison on the same book, the scalar
+reverse scan (sensitivities only, no scenarios) takes 52.8 ms.
 
 ### Sorted against grouped: the 10,500 misses
 
@@ -209,21 +107,13 @@ corresponding grouping key is the last regular payment date (its position in the
 
 ### Reproducing
 
-Built by the `release` preset with the AVX-512 variant, on GCC, Clang and MSVC; it needs a CPU with AVX-512.
-From `build/release/examples/benchmark_paper`:
+From the build directory (`build/examples/benchmark_paper`):
 
 ```
-LRU_CAPS=16,32,64,128,256,1024,4096 ./scenario_bench 100000 0 3   # the 100,000-trade sweep above
-LRU_ALL=1 LRU_CAPS=64 ./scenario_bench 500000 0 2                 # the 500,000-trade comparison at 64 columns
+LRU_CAPS=16,32,64,128 ./scenario_bench 100000 0 3
+LRU_ALL=1 LRU_CAPS=64 ./scenario_bench 500000 0 2
 ```
 
 Arguments are trades, baseline (1 adds the per-scenario repricing baseline) and repetitions. Above 100,000 trades
-the random-order runs below 1,024 columns are skipped unless `LRU_ALL=1` is set. In PowerShell, set the variables
-first, for example `$env:LRU_ALL = '1'; $env:LRU_CAPS = '64'`, and clear them afterwards with
-`Remove-Item Env:LRU_ALL, Env:LRU_CAPS`; with the Visual Studio generator the executable is in a `Release`
-subfolder. The program changes into its own data directory, so it can be run from anywhere.
-
-CLion configurations: `scenario_bench 100k (LRU date cache)` runs the default sweep with the baseline;
-`scenario_bench 500k (64 columns, all orders)` sets `LRU_ALL=1` and `LRU_CAPS=64` and reproduces the 500,000-trade
-table. Standalone:
-`g++ -O3 -std=c++20 -march=native -ffp-contract=fast -I../.. -Wno-unused-result scenario_bench.cpp -o scenario_bench`.
+the random-order runs below 1,024 columns are skipped unless `LRU_ALL=1` is set. The program changes into its own
+data directory, so it can be run from anywhere.
