@@ -177,25 +177,6 @@ inline void scan_grouped_gamma_diagonal(
     scan_grouped_gamma_diagonal_kernel<policy, false>(L, Sd, out, scratch);
 }
 
-<<<<<<< HEAD
-=======
-// Checked counterpart for Kd * LANES doubles per group. Requires a
-// 64-byte-aligned output when nonempty, just like the raw-pointer kernel.
-template <Store policy = Store::normal>
-inline void scan_grouped_gamma_diagonal(
-    const GroupLayout& L, const Stencils& Sd, std::span<double> out,
-    GroupGammaScratch& scratch) {
-    Sd.validate();
-    const size_t waves=detail::checked_grouped_product(
-        static_cast<size_t>(Sd.K()), LANES);
-    const size_t needed=detail::checked_grouped_product(
-        L.groups.size(), waves);
-    if (out.size()!=needed)
-        throw std::invalid_argument("grouped gamma: wrong output size");
-    scan_grouped_gamma_diagonal<policy>(L,Sd,out.data(),scratch);
-}
-
->>>>>>> origin/main
 // Returns K portfolio values, not N*K values. There is still a coupon
 // traversal; eliminating output memory traffic does not eliminate the work.
 inline void scan_grouped_gamma_portfolio_diagonal(
@@ -204,18 +185,6 @@ inline void scan_grouped_gamma_portfolio_diagonal(
     scan_grouped_gamma_diagonal_kernel<Store::normal, true>(L, Sd, out, scratch);
 }
 
-<<<<<<< HEAD
-=======
-inline void scan_grouped_gamma_portfolio_diagonal(
-    const GroupLayout& L, const Stencils& Sd, std::span<double> out,
-    GroupGammaScratch& scratch) {
-    Sd.validate();
-    if (out.size()!=static_cast<size_t>(Sd.K()))
-        throw std::invalid_argument("grouped gamma portfolio: wrong output size");
-    scan_grouped_gamma_portfolio_diagonal(L,Sd,out.data(),scratch);
-}
-
->>>>>>> origin/main
 // Convenience overload, avoids per-GROUP allocations but creates scratch
 // once per call. Reuse explicit GroupGammaScratch for repeated curves.
 template <Store policy = Store::normal>
@@ -225,15 +194,6 @@ inline void scan_grouped_gamma_diagonal(
     scan_grouped_gamma_diagonal<policy>(L, Sd, out, scratch);
 }
 
-<<<<<<< HEAD
-=======
-template <Store policy = Store::normal>
-inline void scan_grouped_gamma_diagonal(
-    const GroupLayout& L, const Stencils& Sd, std::span<double> out) {
-    GroupGammaScratch scratch;
-    scan_grouped_gamma_diagonal<policy>(L,Sd,out,scratch);
-}
->>>>>>> origin/main
 
 // Zero-copy lookup over the existing first-order AoSoA and the corrected
 // gamma diagonal. Both buffers and the refreshed layout must outlive the
@@ -253,32 +213,8 @@ struct GroupedDiscountCrossGammaView {
           first_order(delta), diagonal(gamma) {
         Sd.validate();
         if (Kp < 0 || !L.refreshed || L.discount_grid != Sd.B ||
-<<<<<<< HEAD
             (!L.groups.empty() && (!delta || !gamma)))
             throw std::invalid_argument("grouped gamma view: stale table or null buffers");
-=======
-            L.projection_grid.size()!=static_cast<size_t>(Kp)+1 ||
-            (!L.groups.empty() && (!delta || !gamma)))
-            throw std::invalid_argument("grouped gamma view: stale table, wrong projection waves or null buffers");
-    }
-
-    // Checked construction with non-owning spans. Sizes are verified at
-    // construction, but the caller must retain the data and not refresh
-    // the curve/layout or overwrite the buffers for the view's lifetime.
-    GroupedDiscountCrossGammaView(const GroupLayout& L, const Stencils& Sd,
-                                  int projection_buckets,
-                                  std::span<const double> delta,
-                                  std::span<const double> gamma)
-        : GroupedDiscountCrossGammaView(L,Sd,projection_buckets,
-                                        delta.data(),gamma.data()) {
-        const size_t first=detail::grouped_output_entries(
-            L,Sd.K(),projection_buckets);
-        const size_t diagonal_entries=detail::checked_grouped_product(
-            L.groups.size(),
-            detail::checked_grouped_product(static_cast<size_t>(Sd.K()),LANES));
-        if(delta.size()!=first || gamma.size()!=diagonal_entries)
-            throw std::invalid_argument("grouped gamma view: wrong input buffer size");
->>>>>>> origin/main
     }
 
     // The view borrows its layout, stencils and two AoSoA output buffers.
@@ -291,21 +227,6 @@ struct GroupedDiscountCrossGammaView {
                                   const double*, const double*) = delete;
     GroupedDiscountCrossGammaView(const GroupLayout&, const Stencils&&, int,
                                   const double*, const double*) = delete;
-<<<<<<< HEAD
-=======
-    GroupedDiscountCrossGammaView(GroupLayout&&, const Stencils&, int,
-                                  std::span<const double>,
-                                  std::span<const double>) = delete;
-    GroupedDiscountCrossGammaView(const GroupLayout&&, const Stencils&, int,
-                                  std::span<const double>,
-                                  std::span<const double>) = delete;
-    GroupedDiscountCrossGammaView(const GroupLayout&, Stencils&&, int,
-                                  std::span<const double>,
-                                  std::span<const double>) = delete;
-    GroupedDiscountCrossGammaView(const GroupLayout&, const Stencils&&, int,
-                                  std::span<const double>,
-                                  std::span<const double>) = delete;
->>>>>>> origin/main
 
     const Group& group(size_t gi, int lane) const {
         if (gi >= layout.groups.size() || lane < 0 ||

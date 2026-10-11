@@ -1,56 +1,10 @@
 # benchmark_paper: adjoint comparison, write-only reference, LRU date cache
 
-<<<<<<< HEAD
 Supporting benchmarks for the paper. They read the SOFR-style RFR curve in `rfr_curves.txt` (illustrative par OIS
 quotes, 30 + 36 forward buckets). All results quoted here are in
 [`benchmarks/results/2026-10-11_i7-12700K/`](../../benchmarks/results/2026-10-11_i7-12700K/): one thread, Intel
 i7-12700K (AVX2, no AVX-512), GCC 13.3, unpinned. The headline 500,000-instrument benchmark is
 `../benchmark/bench.cpp` (`bench_library`); see [BENCHMARKS.md](../../BENCHMARKS.md).
-=======
-Reproduces the table in §9 of the paper: 500,000 instruments, half semi-annual fixed-rate bonds and half
-annual-30/360-vs-6M-Act/360 swaps, maturities 1–29y, on the Eonia/Euribor6M curves of QuantLib's
-MulticurveBootstrapping example (`quantlib_example_curves.txt`, 30 + 36 forward buckets), 66 sensitivities
-per instrument, streaming output. The current source reports first derivatives per unit
-instantaneous-forward-rate shift, matching the library and manuscript. The committed 50.9 ms record is older:
-that historical executable used interval-integrated-forward coordinates. The two outputs differ only by the
-known bucket-length scaling, but the old timing is kept as historical evidence and is not relabelled as a fresh
-run of the current source. The broader library/OIS workload is separate — do not mix the generations.
-
-
-## Reader-run comparisons from the article
-
-The one-command [comparison runner](run_comparisons.py) invokes existing, correctness-checked C++ executables rather than a reconstructed or hard-coded timing table. Start with a small book, on x86-64 hardware capable of AVX-512 and a GCC/Clang C++20 toolchain with `<experimental/simd>`:
-
-```sh
-# From repository root; configures and builds the relevant Release target automatically
-python3 examples/benchmark_paper/run_comparisons.py                  # 2,000 trades, bump/reprice vs scan and grouped SIMD
-python3 examples/benchmark_paper/run_comparisons.py --suite all      # add date-cache ordering, adjoint and aggregation
-python3 examples/benchmark_paper/run_comparisons.py --suite all --full # 500,000 trades; can be slow and memory-intensive
-python3 examples/benchmark_paper/run_comparisons.py --suite write-floor --full
-```
-
-The first suite compares `BASE` central-difference wave repricing, `SCAN`, and eight-lane grouped kernels under the same generated paper-book contract. The `cache` suite compares random, sorted and schedule-grouped processing under the same 64-column scenario cache. `adjoint` contrasts a tape-free direct-overlap calculation, the scalar library scan and a deliberately simple recorded-tape prototype. `aggregation` compares contiguous arrays, ordered maps and hash maps with identical sensitivity inputs. `write-floor` only times streaming writes for the **500,000-instrument padded output byte count**; it is neither a memory-copy baseline nor a calculation that reads risk inputs.
-
-For `--suite all --full`, the aggregation example uses **100,000 instruments by default**, while the paper/cache/adjoint examples use 500,000: 500,000 instruments in both associative maps can require several gigabytes. Override this separately with `--aggregation-instruments N` when you have the RAM and want a different aggregation population. Each numerical comparison reports a correctness gate and fails with a nonzero status on disagreement. The driver preserves raw console logs and a `manifest.json` with the source revision, platform, arguments and commands under `build/paper-comparisons/reader-results/`. Pass `--build-dir` or `--output-dir` to change the location; `--no-build` uses prebuilt Release executables. These tests do **not** all time the same phase of one algorithm. Never divide runtimes from different suites as though they were a controlled A/B comparison.
-
-**Provenance:** the original 50.9 ms paper log is historical evidence from an interval-integrated-forward (`theta`) coordinate, whereas these current-source examples return first derivatives per unit instantaneous-forward shift. The financial outputs are related by bucket widths, but current timings must be reported as new observations on the executing machine. The recorded results, [measurement definitions](../../BENCHMARKS.md) and cross-gamma examples remain separate evidence.
-
-```
-g++ -O3 -std=c++20 -march=native -mprefer-vector-width=512 -Wno-unused-result bench_paper.cpp -o bench_paper
-./bench_paper 500000 1 3        # N, run baseline (1/0), repetitions
-```
-Recorded run (`recorded_500k.txt`, one Sapphire Rapids core, 2.1 GHz, VM): baseline 57,445 ms; scalar scan
-1,272 ms; 8-lane normal stores 61.4 ms; 8-lane streaming stores 50.9 ms (1.54 ns per sensitivity);
-64,034 groups, 97.6% lane occupancy; GRP vs scalar 3.4e-11; BASE vs scalar 2.7e-8.
-Historical write-only reference: 270 MiB in 15.7 ms on the same core. The original source/log for that
-measurement is not in this repository, so it is context rather than a self-contained reproduction. The
-manuscript also distinguishes 270 MiB from the benchmark's 270,479,616-byte padded output.
-
-`write_floor` is the current reproducible write-only benchmark. Its default byte count is exactly 270,479,616;
-pass `283115520` to measure 270 MiB. `recorded_write_floor_cloud.txt` is a separate cloud-host run and is
-explicitly not the historical 15.7 ms measurement.
-`recorded_sweep.txt` is the working-set staircase (10k–500k).
->>>>>>> origin/main
 
 ## Adjoint baselines (`adjoint_bench.cpp`)
 
@@ -66,17 +20,11 @@ All agree to about 3e-11. The recorded-tape timing includes expression construct
 and reverse traversal; this experiment does not isolate tape-memory traffic or establish the cost of other AAD
 implementations. The geometry-aware N·K adjoint is within 2.4x of the scan at scalar level.
 
-<<<<<<< HEAD
 ## Write-only reference (`write_floor.cpp`)
 
 Streams zeros into a buffer of the size of the 500k book's padded output (273,504,000 bytes) with non-temporal
 stores (AVX-512 or AVX2; plain `memset` on a portable build). Three runs: 8.3 to 8.6 ms (about 32 GB/s) on this
 machine; further runs gave up to 10.2 ms. `./write_floor 273504000 15`.
-=======
-The original raw log behind the historical 431/726/8784 ms row has not been recovered.
-`recorded_adjoint_500k_cloud.txt` is a separate current-source run on a different cloud host; it validates the
-comparison and correctness gate but does not replace the historical timings.
->>>>>>> origin/main
 
 ## LRU date cache: grouping trades by shared schedule (`scenario_bench.cpp`)
 

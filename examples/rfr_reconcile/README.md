@@ -1,10 +1,6 @@
 # RFR reconciliation (single overnight-indexed curve)
 
-<<<<<<< HEAD
 A custom, dependency-free reference written by the authors for the reconciliation in the paper's Section 11, on a single
-=======
-A standalone, dependency-free reference extracted from PR #2 by damian123 for the reconciliation in the paper's Section 11, on a single
->>>>>>> origin/main
 SOFR-style discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
 coupon is `N (D(a)/D(b) - 1)` paid at `p`.
 
@@ -14,7 +10,6 @@ valuation date, and no calendar logic is involved.
 | file | role |
 |---|---|
 | `rfr_reference.py generate` | bootstrap (log-linear discount factors), value the book, export unit cashflows, write finite-difference wave risk at five bump sizes |
-<<<<<<< HEAD
 | `scan_wave <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
 | `rfr_reference.py check` | direct-overlap oracle, explicit adjoint, finite-difference convergence, quote risk (wave risk x bootstrap Jacobian vs re-bootstrap) and the Hagan hedge solve |
 
@@ -23,16 +18,6 @@ Run `ctest -R rfr_reconcile_replay`, or by hand:
 ```sh
 python3 examples/rfr_reconcile/rfr_reference.py generate /tmp/rfr
 build/examples/rfr_reconcile/scan_wave /tmp/rfr
-=======
-| `scan_rfr <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
-| `rfr_reference.py check` | direct-overlap oracle, explicit adjoint, finite-difference convergence, quote risk (wave risk x bootstrap Jacobian vs re-bootstrap) and the Hagan hedge solve |
-
-Run `ctest -R rfr_reconcile_replay`, which checks both the committed fixture and a freshly generated fixture, or run the three commands by hand:
-
-```sh
-python3 examples/rfr_reconcile/rfr_reference.py generate /tmp/rfr
-build/examples/rfr_reconcile/scan_rfr /tmp/rfr
->>>>>>> origin/main
 python3 examples/rfr_reconcile/rfr_reference.py check /tmp/rfr
 ```
 

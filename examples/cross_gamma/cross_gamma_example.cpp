@@ -1,10 +1,6 @@
 // Reproducible 16-bucket Hagan-wave cross-gamma example.
 // All values are currency PV derivatives per unit instantaneous-forward shift.
-<<<<<<< HEAD
 // This is an explanatory example, not a speed benchmark.
-=======
-// This is an explanatory example, not a speed/QuantLib benchmark.
->>>>>>> origin/main
 #include "ladder/cross_gamma.hpp"
 #include "ladder/scan.hpp"
 #include <algorithm>

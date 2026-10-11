@@ -3,12 +3,8 @@
 
 Standard library only. Two modes:
 
-<<<<<<< HEAD
   rfr_reference.py generate [dir] [--curve FILE]
                                     write the fixtures: wave_buckets.txt, unit_cashflows_wave.txt,
-=======
-  rfr_reference.py generate [dir]   write the fixtures: wave_buckets.txt, unit_cashflows_wave.txt,
->>>>>>> origin/main
                                     wave_risk_<eps>.txt (central differences through full valuation)
                                     and quotes.txt (the illustrative par-OIS quotes)
   rfr_reference.py check [dir]      read scan_wave_risk.txt (written by the C++ scan_wave) and run the
@@ -198,7 +194,6 @@ def fmt(v):
     return repr(float(v))
 
 
-<<<<<<< HEAD
 def quotes_from_curve_file(path):
     """Par annual OIS quotes at PILLARS implied by the first (ois) block of a rfr_curves-style file:
     S_T = (1 - D(T)) / sum_{j=1..T} D(j), D log-linear between nodes, flat forward beyond the last node.
@@ -219,10 +214,6 @@ def quotes_from_curve_file(path):
 
 def write_fixtures(d, quotes=None):
     quotes = QUOTES if quotes is None else quotes
-=======
-def write_fixtures(d):
-    quotes = QUOTES
->>>>>>> origin/main
     curve = bootstrap(quotes)
     insts = book() + hedge_instruments(quotes)
     K = len(PILLARS)
@@ -411,12 +402,8 @@ if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else ''
     d = Path(sys.argv[2] if len(sys.argv) > 2 else '.').resolve()
     if mode == 'generate':
-<<<<<<< HEAD
         curve_file = sys.argv[sys.argv.index('--curve') + 1] if '--curve' in sys.argv else None
         write_fixtures(d, quotes_from_curve_file(curve_file) if curve_file else None)
-=======
-        write_fixtures(d)
->>>>>>> origin/main
     elif mode == 'check':
         sys.exit(check(d))
     else:
