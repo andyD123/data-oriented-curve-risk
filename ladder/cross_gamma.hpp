@@ -21,14 +21,28 @@ inline void validate_cross_gamma_stencils(const Stencils& S) {
 
 // Input records must be finite and in ascending time order. O(N + K) after sort.
 // Does not change or rerun first-order risk. Returns one diagonal entry per wave.
+// Reuse K-sized arrays across repeated curves/instruments. Do not share
+// the same instance concurrently between worker threads.
+struct GammaDiagonalScratch {
+    std::vector<double> interior2, suffix;
+    void prepare(int K) {
+        interior2.resize(static_cast<size_t>(K) + 1);
+        suffix.resize(static_cast<size_t>(K) + 1);
+        std::fill(interior2.begin(), interior2.end(), 0.0);
+        std::fill(suffix.begin(), suffix.end(), 0.0);
+    }
+};
+
 inline void scan_discount_gamma_diagonal(const Stencils& S,
                                          std::span<const UnitCashflow> cf,
+                                         GammaDiagonalScratch& scratch,
                                          double* diagonal) {
     validate_cross_gamma_stencils(S);
     if (!diagonal) throw std::invalid_argument("scan_discount_gamma_diagonal: null output");
     const int K = S.K();
-    std::vector<double> interior2(static_cast<size_t>(K) + 1, 0.0);
-    std::vector<double> suffix(static_cast<size_t>(K) + 1, 0.0);
+    scratch.prepare(K);
+    auto& interior2 = scratch.interior2;
+    auto& suffix = scratch.suffix;
     int bucket = 1;
     double previous = -std::numeric_limits<double>::infinity();
     for (const auto& c : cf) {
@@ -66,6 +80,14 @@ inline void scan_discount_gamma_diagonal(const Stencils& S,
     }
     const double last_len = S.open_last ? 0.0 : S.len(K);
     diagonal[K - 1] = interior2[K] + last_len * last_len * suffix[K];
+}
+
+// Backwards-compatible convenience overload, one allocation per call.
+inline void scan_discount_gamma_diagonal(const Stencils& S,
+                                         std::span<const UnitCashflow> cf,
+                                         double* diagonal) {
+    GammaDiagonalScratch scratch;
+    scan_discount_gamma_diagonal(S, cf, scratch, diagonal);
 }
 
 // O(K) storage, O(1) element access, O(K) Hessian-vector product.
