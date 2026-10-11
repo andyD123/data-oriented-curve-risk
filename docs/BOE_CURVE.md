@@ -20,7 +20,17 @@ bench_library 500000 1 3 examples/benchmark/rfr_curves_boe.txt
 ```
 
    The other benchmark programs read `rfr_curves.txt` from their working directory, so for them copy the BoE file over a *copy* of `rfr_curves.txt` in a build directory, never over the committed file.
-4. For the reconciliation (`examples/rfr_reconcile`), copy `rfr_reference.py` into a git-ignored folder, replace `QUOTES` with the par OIS rates implied by the BoE curve, `S_T = (1 - D(T)) / sum_{j=1..T} D(j)` at the pillars in `PILLARS`, and run `rfr_reference.py generate`, `scan_wave` and `rfr_reference.py check` there. These par quotes are generated from a fitted curve, so the check is a self-consistency check, not a market test.
+4. For the reconciliation (`examples/rfr_reconcile`), generate the fixtures from the BoE curve file into a git-ignored folder, then scan and check there:
+
+```
+D=benchmarks/results/boe_reconcile        # matches the git-ignored *boe* pattern
+mkdir -p $D
+python3 examples/rfr_reconcile/rfr_reference.py generate $D --curve examples/benchmark/rfr_curves_boe.txt
+# run scan_wave in $D (see examples/rfr_reconcile/README.md), then:
+python3 examples/rfr_reconcile/rfr_reference.py check $D
+```
+
+   `--curve` converts the curve to par OIS quotes, `S_T = (1 - D(T)) / sum_{j=1..T} D(j)` at the pillars. These quotes come from a fitted curve, so the check is a self-consistency check, not a market test.
 5. Write all outputs under a git-ignored path. `.gitignore` already covers `examples/benchmark/rfr_curves_boe.txt`, `benchmarks/results/*boe*/` and `oisddata.zip`.
 
 If you publish anything derived from the output, cite: Bank of England, UK OIS spot curve (Bloomberg Finance L.P. and Bank calculations), with the curve date and the download date. Published timings in this repository use the illustrative curve.

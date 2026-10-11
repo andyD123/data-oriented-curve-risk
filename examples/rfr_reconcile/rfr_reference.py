@@ -3,7 +3,8 @@
 
 Standard library only. Two modes:
 
-  rfr_reference.py generate [dir]   write the fixtures: wave_buckets.txt, unit_cashflows_wave.txt,
+  rfr_reference.py generate [dir] [--curve FILE]
+                                    write the fixtures: wave_buckets.txt, unit_cashflows_wave.txt,
                                     wave_risk_<eps>.txt (central differences through full valuation)
                                     and quotes.txt (the illustrative par-OIS quotes)
   rfr_reference.py check [dir]      read scan_wave_risk.txt (written by the C++ scan_wave) and run the
@@ -193,8 +194,26 @@ def fmt(v):
     return repr(float(v))
 
 
-def write_fixtures(d):
-    quotes = QUOTES
+def quotes_from_curve_file(path):
+    """Par annual OIS quotes at PILLARS implied by the first (ois) block of a rfr_curves-style file:
+    S_T = (1 - D(T)) / sum_{j=1..T} D(j), D log-linear between nodes, flat forward beyond the last node.
+    Self-consistency input only (quotes come from a fitted curve, not from the market)."""
+    tok = Path(path).read_text().split()
+    n = int(tok[2])
+    t = [float(tok[3 + 2 * i]) for i in range(n)]
+    lnd = [math.log(float(tok[4 + 2 * i])) for i in range(n)]
+
+    def df(x):
+        if x >= t[-1]:
+            return math.exp(lnd[-1] + (lnd[-1] - lnd[-2]) / (t[-1] - t[-2]) * (x - t[-1]))
+        i = max(j for j in range(n - 1) if t[j] <= x)
+        w = (x - t[i]) / (t[i + 1] - t[i])
+        return math.exp(lnd[i] + w * (lnd[i + 1] - lnd[i]))
+    return [(1 - df(T)) / sum(df(j) for j in range(1, T + 1)) for T in PILLARS]
+
+
+def write_fixtures(d, quotes=None):
+    quotes = QUOTES if quotes is None else quotes
     curve = bootstrap(quotes)
     insts = book() + hedge_instruments(quotes)
     K = len(PILLARS)
@@ -383,7 +402,8 @@ if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else ''
     d = Path(sys.argv[2] if len(sys.argv) > 2 else '.').resolve()
     if mode == 'generate':
-        write_fixtures(d)
+        curve_file = sys.argv[sys.argv.index('--curve') + 1] if '--curve' in sys.argv else None
+        write_fixtures(d, quotes_from_curve_file(curve_file) if curve_file else None)
     elif mode == 'check':
         sys.exit(check(d))
     else:
