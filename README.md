@@ -2,7 +2,7 @@
 
 > **~1,100× faster than bump-and-reprice** on a 500,000-instrument book (1.5 ns per sensitivity, single thread, AVX-512; historical run, current-source rerun pending, see [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats). Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
 
-Companion sources for **"Reworking the Inner Loop: Data-Oriented Curve Risk"** (Andrew Drakeford & Lars Schouw, October 2026).
+Companion sources for **"Breaking the Memory Wall in Rates Risk: Data-Oriented Design and the Reverse Scan Algorithm"** (Andrew Drakeford & Lars Schouw, October 2026).
 The library computes first-order sensitivity to interval-forward **waves** (Hagan box stencils). The contribution here is data-oriented organisation: shared dates, grouped instruments, deal-axis SIMD, streaming non-temporal stores, and reverse suffix scans.
 
 ## The idea
