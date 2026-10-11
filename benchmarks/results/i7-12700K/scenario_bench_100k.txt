@@ -1,0 +1,45 @@
+scenario_bench: wave scenarios priced from an LRU date cache, single thread
+build:     AVX2 instructions; GCC 13.3.0
+book:      100,000 instruments (bonds and vanilla swaps); 3,540 distinct curve dates
+scenarios: 132 (30 discount waves + 36 projection waves, up and down), padded to 136
+outputs:   6,600,000 sensitivities (66 per instrument, per unit forward-rate shift)
+
+terms
+  column      136 scenario factors at one date (1,088 bytes)
+  misses      column computations, both curves; the floor is 7,020, each column once
+              (3,480 discount-curve dates + 3,540 projection-curve dates)
+  orders      random = shuffled; sorted = type, start date, tenor;
+              grouped = start date, type, tenor (prototype ordering)
+  full table  every date's column computed up front (3.9 MB per curve)
+  time        wall clock per curve update, best of 3 runs
+
+result: LRU cache, cost of one curve update
+  columns     cache  order            time     per output        misses  hit rate
+       16     17 KB  random      1782.1 ms      270.01 ns     5,185,875    23.17%
+       16     17 KB  sorted      1579.7 ms      239.34 ns     4,778,344    29.21%
+       16     17 KB  grouped     1540.2 ms      233.37 ns     4,778,344    29.21%
+       32     35 KB  random      1625.2 ms      246.24 ns     4,842,108    28.26%
+       32     35 KB  sorted      1180.7 ms      178.89 ns     3,264,181    51.64%
+       32     35 KB  grouped     1198.4 ms      181.58 ns     3,264,181    51.64%
+       64     70 KB  random      1607.4 ms      243.55 ns     4,469,511    33.78%
+       64     70 KB  sorted       183.6 ms       27.82 ns        10,500    99.84%
+       64     70 KB  grouped      181.2 ms       27.46 ns         7,020    99.90%
+      128    139 KB  random      1568.6 ms      237.67 ns     4,366,199    35.31%
+      128    139 KB  sorted       183.9 ms       27.86 ns        10,500    99.84%
+      128    139 KB  grouped      191.3 ms       28.98 ns         7,020    99.90%
+  at 16 columns: grouped is 1.2x faster than random
+  at 32 columns: grouped is 1.4x faster than random
+  at 64 columns: grouped is 8.9x faster than random, at the miss floor
+  at 128 columns: grouped is 8.2x faster than random, at the miss floor
+
+context: same book, other methods
+  full table, random order                                     396.1 ms       60.02 ns per output
+  full table, sorted order                                     223.9 ms       33.92 ns per output
+  full table build, per curve update                             2.5 ms      718.51 ns per date (both curves)
+  scalar reverse scan, sensitivities only (no scenarios)        58.5 ms        8.86 ns per output
+
+accuracy (each case compared with the scalar scan, relative to max(|value|, 1e4))
+  largest difference over 14 runs: 4.8e-08 (full table, random order)
+  central differences use eps = 1e-5; truncation error is expected
+
+correctness gate: PASS (each case agrees to 1e-06; every value finite)

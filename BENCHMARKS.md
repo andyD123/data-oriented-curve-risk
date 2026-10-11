@@ -1,9 +1,13 @@
 # Benchmarks
 
 All figures are single-threaded first-order curve sensitivities (waves), computed for every instrument against
-every curve node, on the illustrative SOFR-style RFR curve in `examples/benchmark/rfr_curves.txt`.
-Raw output for every number below is in
-[`benchmarks/results/2026-10-11_i7-12700K/`](benchmarks/results/2026-10-11_i7-12700K/).
+every curve node, on the Bank of England SONIA OIS curve (see [docs/BOE_CURVE.md](docs/BOE_CURVE.md); the data
+are the Bank's copyright and are not redistributed). In keeping with that licence this repository reports timings,
+ratios and agreement between methods only: no rates and no rate-derived values (quotes, present values, hedge
+notionals or rate sensitivities). The committed `examples/benchmark/rfr_curves.txt` is an invented placeholder
+that lets the tests and examples run without third-party data; the numbers below were not produced with it.
+Raw output for every number below is in [`benchmarks/results/i7-12700K/`](benchmarks/results/i7-12700K/) and
+[`benchmarks/results/i7-12700K_pinned/`](benchmarks/results/i7-12700K_pinned/).
 
 ## Baseline
 
@@ -20,29 +24,29 @@ Command: `bench_library 500000 1 3`.
 
 | Variant | Time per curve update | ns / sensitivity | Speedup vs BASE |
 |---|---:|---:|---:|
-| BASE bump-and-reprice | 24,045 ms | 728.6 | 1× |
-| SCAN replication + scalar reverse scan | 458.5 ms | 13.9 | 52× |
-| GRP AVX2, 8 lanes, date table + kernel | 31.5 ms | 0.954 | **764×** |
+| BASE bump-and-reprice | 23,482 ms | 711.6 | 1× |
+| SCAN replication + scalar reverse scan | 462.4 ms | 14.0 | 51× |
+| GRP AVX2, 8 lanes, date table + kernel | 39.1 ms | 1.18 | **601×** |
 
-GRP is 14.6× faster than SCAN per curve update. The grouped kernel with normal stores takes 44.7 ms; with
-streaming stores 31.4 ms. On the portable auto-vectorised backend (no intrinsics) GRP takes 49.9 ms (467× vs the BASE of that run, 23,263 ms; a separate program run).
-GRP agrees with SCAN to 3.6e-15 relative.
+GRP is 11.8× faster than SCAN per curve update. The grouped kernel with normal stores takes 51.1 ms; with
+streaming stores 39.0 ms. On the portable auto-vectorised backend (no intrinsics) GRP takes 59.8 ms (393× vs the
+BASE of that run, 23,543 ms; a separate program run). GRP agrees with SCAN to 3.5e-15 relative. This unpinned
+run landed on a slower core than the best case; see the variation notes below (about 600x-780x across runs and cores).
 
-**Write-only reference.** Streaming 273.5 MB of zeros (the padded output size) took 8.3-8.6 ms in the three
-saved runs on this machine (31.6-33.0 GB/s; `write_floor`), so the 31.4 ms kernel is roughly 3-4× the
-write-only time. The write-only figure ignores input read traffic (roughly 80 MB of cashflow amounts plus date
+**Write-only reference.** Streaming 273.5 MB of zeros (the padded output size) took 7.5-7.8 ms in the three
+saved runs on this machine (35.2-36.4 GB/s; `write_floor`), so the 39.0 ms kernel is about 5× the
+write-only time in this run (3.1-4.6× on pinned cores, below). The write-only figure ignores input read traffic (roughly 80 MB of cashflow amounts plus date
 indices), so it is a lower bound on the memory floor.
 
-**Copy reference.** A plain `memcpy` of a 273.5 MB buffer (read plus write, 15 runs, one-off program, not in the
-repository) took 27.8 ms at best and about 29.3 ms typically, so the 31.5 ms risk calculation is about 1.1× the
-best copy time. Untuned library `memcpy`; one measurement.
+**Copy reference.** A plain `memcpy` of a 273.5 MB buffer (`copy_floor`, read plus write, best of 15, untuned
+library routine) took 18.9-22.4 ms on the six pinned CPUs, so the pinned kernel is 1.6-1.9× the copy time.
 
 **Structural zeros.** Two thirds of the book (bonds and compounded-OIS swaps) have no projection leg, so about
 12 of the 33 million outputs are zero by construction (derived from the book composition, not counted in the
-run). Over the remaining ~21 million the streaming kernel costs about 1.5 ns per output instead of 0.95 ns.
+run). Over the remaining ~21 million the streaming kernel costs about 1.6 ns per output instead of 1.0 ns.
 
-**Scalar vs lanes.** The 52× row includes replication (288 ms); the lane rows exclude it. The scalar ladder alone
-takes 170 ms, so the lane kernel is 3.8× (normal stores) or 5.4× (streaming stores) faster than the scalar ladder.
+**Scalar vs lanes.** The 51× row includes replication (281 ms); the lane rows exclude it. The scalar ladder alone
+takes 181 ms, so the lane kernel is 3.5× (normal stores) or 4.6× (streaming stores) faster than the scalar ladder.
 
 **Output layout.** Output stays grouped and interleaved (66 consecutive eight-lane vectors per group); the timed
 kernel includes no de-interleave. `gather` produces a per-instrument view through the lane-to-instrument map
@@ -55,22 +59,22 @@ per group, 64,750 groups here. The effect of an arena was not measured.
 
 | Method | Time | ns / sensitivity |
 |---|---:|---:|
-| Reverse scan, N+K | 269.5 ms | 8.2 |
-| Tape-free N·K overlap adjoint (geometry known) | 639.8 ms | 19.4 |
-| Reverse mode with a recorded tape (960 nodes in the last instrument) | 5,402.9 ms | 163.7 |
+| Reverse scan, N+K | 289.0 ms | 8.8 |
+| Tape-free N·K overlap adjoint (geometry known) | 647.4 ms | 19.6 |
+| Reverse mode with a recorded tape (960 nodes in the last instrument) | 5,774.6 ms | 175.0 |
 
-All agree to about 3e-11. The tape timing includes expression construction, exponentials, tape recording and
+All agree to about 6e-11. The tape timing includes expression construction, exponentials, tape recording and
 reverse traversal; it does not isolate tape-memory traffic and says nothing about other AAD implementations.
 
 ## Working set and lane occupancy (GRP kernel, streaming stores, AVX2)
 
 | Instruments | Groups | Lane occupancy | ns / sensitivity |
 |---:|---:|---:|---:|
-| 10,000 | 4,482 | 27.9% | 1.99 |
-| 30,000 | 5,876 | 63.8% | 1.09 |
-| 100,000 | 14,794 | 84.5% | 1.17 |
-| 300,000 | 39,831 | 94.1% | 1.03 |
-| 500,000 | 64,750 | 96.5% | 0.89 (separate best-of-5 run; the headline run above gives 0.95 with the table refresh) |
+| 10,000 | 4,482 | 27.9% | 2.33 |
+| 30,000 | 5,876 | 63.8% | 1.68 |
+| 100,000 | 14,794 | 84.5% | 1.28 |
+| 300,000 | 39,831 | 94.1% | 1.24 |
+| 500,000 | 64,750 | 96.5% | 1.05 (separate best-of-5 run; the headline run above gives 1.18 with the table refresh) |
 
 Small books pay more because groups are less full. No cost increase appears when the output outgrows the cache
 on this machine: the streaming-store kernel is write-bound.
@@ -79,10 +83,10 @@ on this machine: the streaming-store kernel is write-bound.
 
 | Representation | Time |
 |---|---:|
-| Contiguous ordered ladders, vector add | 3.58 ms |
-| Two-level hierarchy (book, desk) | 3.60 ms |
-| `std::unordered_map` per instrument | 166.8 ms (47× slower) |
-| `std::map` per instrument | 223.8 ms (63× slower) |
+| Contiguous ordered ladders, vector add | 3.32 ms |
+| Two-level hierarchy (book, desk) | 3.74 ms |
+| `std::unordered_map` per instrument | 185.2 ms (56× slower) |
+| `std::map` per instrument | 262.4 ms (79× slower) |
 
 Memory: 53 MB flat against an estimated 581 MB for the maps (node-size estimate, not measured).
 
@@ -90,44 +94,48 @@ Memory: 53 MB flat against an estimated 581 MB for the maps (node-size estimate,
 
 - Speedup depends on book size, cashflows per instrument, number of nodes, ISA and the baseline. Quote it together
   with those, not alone.
-- The grouped method requires a shared date table and one-off layout construction (about 0.9 s at 500k instruments),
+- The grouped method requires a shared date table and one-off layout construction (about 1 s at 500k instruments),
   which are not part of the per-update timing.
 - Timings are wall clock, best of several runs, on an unpinned desktop. They are not statistical evidence.
 - No AVX-512 machine was available. AVX-512 results, when measured, should be added as a separate result directory.
 - See [docs/PAPER_EVIDENCE.md](docs/PAPER_EVIDENCE.md) for the claim-to-command mapping.
 
-## Pinned re-measurement, ablation and extras (11 October 2026)
+## Pinned re-measurement, ablation and extras
 
-Raw output: `benchmarks/results/2026-10-11_i7-12700K_pinned/` (driver `benchmarks/run_pinned_campaign.sh`, summary
-`summary.txt`). Same machine; single-thread runs pinned with `taskset` to logical CPU 2. These are a different run
-from the table above and are not mixed with it.
+Raw output: `benchmarks/results/i7-12700K_pinned/` (drivers `benchmarks/run_pinned_campaign.sh` and
+`benchmarks/run_cpu_sweep.sh`, summary `summary.txt`). Same machine; single-thread runs pinned with `taskset`
+(logical CPU 2 unless stated). These are a different run from the table above and are not mixed with it.
 
 | Layer (500,000 instruments, median of 3 runs, best of 3 inside each) | Time | ns / sensitivity | vs BASE |
 |---|---:|---:|---:|
-| BASE bump-and-reprice, object model with virtual `npv` | 23,570 ms | 714 | 1x |
-| SOA same bumps, flat arrays, no virtual calls | 22,665 ms | 687 | 1.04x |
-| TABLE as SOA plus shared date table | 2,086 ms | 63.2 | 11x |
-| SCAN scalar reverse scan incl. replication | 454 ms | 13.8 | 52x |
-| GRP eight AVX2 lanes, normal stores (kernel) | 52.0 ms | 1.58 | 453x |
-| GRP streaming stores (table refresh + kernel) | 37.8 ms | 1.14 | 624x |
+| BASE bump-and-reprice, object model with virtual `npv` | 22,929 ms | 695 | 1x |
+| SOA same bumps, flat arrays, no virtual calls | 22,354 ms | 677 | 1.03x |
+| TABLE as SOA plus shared date table | 1,720 ms | 52.1 | 13x |
+| SCAN scalar reverse scan incl. replication | 439 ms | 13.3 | 52x |
+| GRP eight AVX2 lanes, normal stores (kernel) | 41.1 ms | 1.24 | 558x |
+| GRP streaming stores (table refresh + kernel) | 33.0 ms | 1.00 | 695x |
 
-**Variation.** The 31.5 ms headline above is a favourable best-of-3 from an unpinned run. Pinned to CPU 2 the
-best-of-3 inside three full runs was 34.1-39.4 ms. The best of seven repetitions across six logical CPUs ranged
-from 30.3 ms (CPUs 6, 8) to 37.2 ms (CPU 0), so the speedup over BASE lies between roughly 620x and 780x. Fifteen
-independent single-repetition processes also pay the first touch of the output pages and gave a median of 42.1 ms
-(36.4-51.8); their normal-store figures (median 118 ms) are dominated by first touch and should not be used.
+**Variation.** The 39.1 ms headline above is an unpinned best-of-3 on a core that was not controlled. Pinned to
+CPU 2 the best-of-3 inside three full runs was 29.6-34.5 ms. The best of seven repetitions across six logical CPUs
+(0, 2, 4, 6, 8, 10; `per_cpu/`) ranged from 32.4 ms (CPU 4) to 37.4 ms (CPU 0), so the speedup over BASE lies
+between roughly 600x and 780x. Fifteen independent single-repetition processes also pay the first touch of the
+output pages and gave a median of 31.6 ms (29.8-48.1); their normal-store figures are dominated by first touch and
+should not be used.
 
-**Same-CPU reference ratios.** Kernel 30.3-37.2 ms against write-only 7.3-8.5 ms: 4.0-4.7x. Against a plain
-`memcpy` of the same 273.5 MB (`copy_floor`, best of 15, 17.8-20.2 ms): 1.7-1.8x. Both references were measured
+**Same-CPU reference ratios.** Kernel 32.3-37.3 ms against write-only 7.5-11.1 ms: 3.1-4.6x. Against a plain
+`memcpy` of the same 273.5 MB (`copy_floor`, best of 15, 18.9-22.4 ms): 1.6-1.9x. Both references were measured
 on the same CPU as the kernel.
 
-**Threads** (groups split into contiguous ranges, unpinned, best of 15; 6 cores, 12 threads): 1: 31.8 ms,
-2: 32.2, 4: 18.4, 6: 21.8, 8: 18.4, 12: 18.0. Scaling stops near 1.8x at about 15 GB/s written; not diagnosed.
+**Threads** (groups split into contiguous ranges, unpinned, best of 15; 6 cores, 12 threads): 1: 29.1 ms,
+2: 21.1, 4: 19.1, 6: 19.1, 8: 18.4, 12: 17.2. Scaling stops near 1.7x at about 16 GB/s written; not diagnosed.
 
 **One instrument per group** (`LADDER_UNIQUE_SIG=1`, 500,000 groups, 12.5% occupancy, 2.1 GB padded output):
-kernel 253 ms (7.7 ns/output), layout build 2.5 s.
+kernel 178 ms (5.4 ns/output), layout build 1.8 s.
 
-**Incremental insert** (`LADDER_INSERT=20000`): 14,651 inserts into a free lane at 4.8 us, 5,349 new
-single-instrument groups at 16.0 us, none refused; 156 ms in total against 896 ms to rebuild the 520,000-instrument
-layout (about 115,000 inserts). All ladders agree with the scalar scan to 3.6e-15. A date outside the date table
+**Incremental insert** (`LADDER_INSERT=20000`): 14,651 inserts into a free lane at 4.6 us, 5,349 new
+single-instrument groups at 14.8 us, none refused; 147 ms in total against 859 ms to rebuild the 520,000-instrument
+layout (about 117,000 inserts). All ladders agree with the scalar scan to 3.5e-15. A date outside the date table
 needs a rebuild; new groups hold one instrument, so occupancy degrades; deletion is not implemented.
+
+**Grouped diagonal gamma** (`bench_gamma_grouped`, portable backend, `bench_gamma_grouped_3runs.txt`): the extra
+diagonal-gamma kernel costs 0.77-0.83x the first-order kernel (about 48 ms against 61 ms); 59,820 oracle checks at 2.6e-12.

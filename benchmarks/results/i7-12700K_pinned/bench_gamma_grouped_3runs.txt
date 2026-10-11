@@ -1,0 +1,15 @@
+gamma_stage2 N=500000 Kd=30 Kp=36 groups=64750 reps=7
+setup_book_ms=233.973 setup_layout_ms=976.694
+refresh_ms=0.097049 first_order_kernel_ms=61.954782 gamma_diagonal_kernel_ms=47.386791 gamma_portfolio_ms=49.764645 combined_kernel_ms=107.899385
+first_order_output_MB=273.504 gamma_output_MB=124.320 extra_gamma_ratio=0.765 combined_ratio=1.742
+oracle_checks=59820 max_rel=2.58e-12 portfolio_max_rel=3.42e-14 status=PASS
+gamma_stage2 N=500000 Kd=30 Kp=36 groups=64750 reps=7
+setup_book_ms=215.279 setup_layout_ms=929.412
+refresh_ms=0.096545 first_order_kernel_ms=59.677742 gamma_diagonal_kernel_ms=49.527250 gamma_portfolio_ms=48.507262 combined_kernel_ms=111.881335
+first_order_output_MB=273.504 gamma_output_MB=124.320 extra_gamma_ratio=0.830 combined_ratio=1.875
+oracle_checks=59820 max_rel=2.58e-12 portfolio_max_rel=3.42e-14 status=PASS
+gamma_stage2 N=500000 Kd=30 Kp=36 groups=64750 reps=7
+setup_book_ms=206.957 setup_layout_ms=971.049
+refresh_ms=0.096560 first_order_kernel_ms=61.765581 gamma_diagonal_kernel_ms=48.716348 gamma_portfolio_ms=48.056385 combined_kernel_ms=108.848398
+first_order_output_MB=273.504 gamma_output_MB=124.320 extra_gamma_ratio=0.789 combined_ratio=1.762
+oracle_checks=59820 max_rel=2.58e-12 portfolio_max_rel=3.42e-14 status=PASS

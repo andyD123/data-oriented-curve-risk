@@ -44,7 +44,7 @@ methods produce the same output; cashflow sorting excluded from every timing):
    the tape is reused and nothing is allocated in the timed loop. A plain tape, not a tuned AAD library.
 
 Measured here (Intel i7-12700K, GCC 13.3, native-architecture build, one thread pinned to one CPU, three runs;
-raw output in `benchmarks/results/2026-10-11_i7-12700K_pinned/bench_cross_gamma_3runs.txt`):
+raw output in `benchmarks/results/i7-12700K_pinned/bench_cross_gamma_3runs.txt`):
 
 | Method | Time |
 |---|---:|
@@ -61,9 +61,9 @@ Relative error: reduced form vs direct analytic 1.7e-14; finite difference vs re
 (truncation and cancellation, as expected for second differences).
 
 `bench_gamma_grouped` (500,000 mixed instruments, grouped eight-lane diagonal gamma and a K-value
-portfolio gamma reduction, on the SOFR-style RFR curve in `rfr_curves.txt`): the extra diagonal-gamma kernel
-costs about 0.8x the first-order kernel (`first_order_kernel_ms` 48, `gamma_diagonal_kernel_ms` 39, portable backend, on this
-machine), with 59,820 oracle checks at 5.6e-12. It has no bump baseline, so it is a cost measurement.
+portfolio gamma reduction, on the Bank of England SONIA curve; see BOE_CURVE.md): the extra diagonal-gamma kernel
+costs about 0.77-0.83x the first-order kernel (`first_order_kernel_ms` about 61, `gamma_diagonal_kernel_ms` about 48,
+portable backend, on this machine), with 59,820 oracle checks at 2.6e-12. It has no bump baseline, so it is a cost measurement.
 
 ## Caveats
 

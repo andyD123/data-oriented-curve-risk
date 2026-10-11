@@ -6,15 +6,15 @@ Standard library only. Two modes:
   rfr_reference.py generate [dir] [--curve FILE]
                                     write the fixtures: wave_buckets.txt, unit_cashflows_wave.txt,
                                     wave_risk_<eps>.txt (central differences through full valuation)
-                                    and quotes.txt (the illustrative par-OIS quotes)
+                                    and quotes.txt (the placeholder par-OIS quotes)
   rfr_reference.py check [dir]      read scan_wave_risk.txt (written by the C++ scan_wave) and run the
                                     reconciliation: direct-overlap oracle, explicit adjoint, finite-
                                     difference convergence, market-quote risk and the hedge solve
 
-The curve is a single SOFR-style curve: par OIS quotes (annual fixed leg against the daily-compounded
+The curve is a single overnight-indexed curve: par OIS quotes (annual fixed leg against the daily-compounded
 overnight rate) bootstrapped with log-linear discount factors, so the interval forwards are piecewise flat.
 Floating legs are compounded overnight legs, N*(D(a)/D(b)-1) paid at p, so no projection curve exists.
-The quotes are ILLUSTRATIVE, not a market snapshot. Times are years from the valuation date; accruals
+The built-in quotes are an invented placeholder, not a market snapshot; use generate --curve for a curve file. Times are years from the valuation date; accruals
 are year fractions of the schedule and no calendar logic is involved.
 """
 import math

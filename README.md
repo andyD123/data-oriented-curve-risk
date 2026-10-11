@@ -1,8 +1,8 @@
 # data-oriented-curve-risk: Ultra-Fast Data-Oriented Curve Risk
 
-> **764× faster than bump-and-reprice** on a 500,000-instrument book (0.95 ns per sensitivity, single thread, AVX2, Intel i7-12700K; 52× for the scalar scan alone). See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
+> **601× faster than bump-and-reprice** on a 500,000-instrument book (1.18 ns per sensitivity, single thread, AVX2, Intel i7-12700K; 51× for the scalar scan alone; roughly 600×-780× across repeated runs and cores), on the Bank of England SONIA curve. See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
 
-Companion sources for **"Reaching the Memory Wall in Rates Risk: Data-Oriented Design and the Reverse Scan Algorithm"** (Andrew Drakeford & Lars Schouw, October 2026).
+Companion sources for **"Risk at the Write Speed: Ultra Fast Data Oriented DV01"** (Andrew Drakeford & Lars Schouw).
 Related work: [DR3](https://github.com/andyD123/DR3), a C++ library for writing vectorised code with generic lambdas and filters, where the instruction set is switched by changing the enclosing namespace.
 The library computes first-order sensitivity to interval-forward **waves** (Hagan box stencils). The contribution here is data-oriented organisation: shared dates, grouped instruments, deal-axis SIMD, streaming non-temporal stores, and reverse suffix scans.
 

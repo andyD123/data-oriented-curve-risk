@@ -14,7 +14,7 @@ DF(0)=1, and extends flat-forward beyond 25y. The 30 + 36 node times of the exis
 kept, so the bucket structure is unchanged; the trailing instrument examples are preserved. The "proj" block
 carries the same curve (single-curve RFR market).
 
-Usage: python3 make_rfr_curves_boe.py oisddata.zip --date 2026-10-01 [--template rfr_curves.txt] [--out rfr_curves_boe.txt]
+Usage: python3 make_rfr_curves_boe.py oisddata.zip --date YYYY-MM-DD [--template rfr_curves.txt] [--out rfr_curves_boe.txt]
 
 Attribution if you publish numbers derived from the output (Bank of England requirement for SONIA data;
 the OIS curve data are the Bank's copyright): source "Bank of England, UK OIS spot curve (Bloomberg Finance

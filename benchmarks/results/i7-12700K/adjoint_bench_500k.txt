@@ -1,0 +1,6 @@
+N=500000 bonds+vanilla swaps, 30+36 waves; direct vs scan 5.1e-11, tape vs scan 6.2e-11
+SCAN  scalar library scan                     289.0 ms      8.76 ns/sensitivity
+DIRECT N*K overlap adjoint, no tape           647.4 ms     19.62 ns/sensitivity
+TAPE  reverse mode with recorded tape        5774.6 ms    174.99 ns/sensitivity
+tape nodes in the final instrument: 960
+correctness gate: PASS (finite results; scaled difference <= 1e-8)

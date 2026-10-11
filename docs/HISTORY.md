@@ -4,8 +4,8 @@ See [BENCHMARKS.md](../BENCHMARKS.md) and [PAPER_EVIDENCE.md](PAPER_EVIDENCE.md)
 
 - Earlier timing records from a different workload and input were removed. All current timings are in
   `benchmarks/results/` and were produced from the source in this repository.
-- Curve input: `examples/benchmark/rfr_curves.txt` (and its copy in `examples/benchmark_paper/`) is an illustrative
-  SOFR-style par OIS bootstrap (`examples/benchmark/make_rfr_curves.py`); the projection block carries the same curve,
+- Curve input: `examples/benchmark/rfr_curves.txt` (and its copy in `examples/benchmark_paper/`) is an invented
+  placeholder par OIS bootstrap (`examples/benchmark/make_rfr_curves.py`); the projection block carries the same curve,
   as in a one-curve RFR market. It is not a market snapshot.
 - Linux GCC configurations were executed. Windows/MSVC and Apple/ARM were not, so no portability claim is made
   for them.

@@ -52,7 +52,7 @@ floating-point overflow is not a guaranteed domain.
 
 ## Scope
 
-- Benchmarks use an illustrative SOFR-style RFR curve (`rfr_curves.txt`), not a market snapshot. Fixed-base wave
+- The published benchmarks and reconciliation use the Bank of England SONIA curve (docs/BOE_CURVE.md); the committed `rfr_curves.txt` is an invented placeholder. The reconciliation quotes are implied by a fitted curve, so it is a self-consistency check, not a market test. Fixed-base wave
   bumps must not be confused with quote bumps plus a full re-bootstrap, and curve reference dates must be converted
   explicitly.
 - Timings are in [BENCHMARKS.md](BENCHMARKS.md) with raw output in `benchmarks/results/`. They are single-machine,
@@ -65,7 +65,7 @@ floating-point overflow is not a guaranteed domain.
 
 `examples/rfr_reconcile/rfr_projection_check.py` values four term-rate swaps (5y semi-annual, 7y starting in 1y, 3y
 quarterly with spread, 32y beyond the last pillar) in an independent Python reference, with floating coupons forecast
-off a second illustrative log-linear curve. Box waves are applied to the discount and projection curves
+off a second log-linear curve (the discount curve plus a smooth synthetic basis). Box waves are applied to the discount and projection curves
 independently and central differences through the full valuation are compared with `scan_wave`'s discount and
 projection ladders: residual ratio 4.00 per step halving, Richardson agreement 1.8e-13 (discount) and 7.6e-12
 (projection), exact zeros beyond maturity. CTest `rfr_projection_replay` replays the recorded fixtures. This checks the

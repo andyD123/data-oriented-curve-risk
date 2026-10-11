@@ -1,10 +1,10 @@
 # RFR reconciliation (single overnight-indexed curve)
 
 A custom, dependency-free reference written by the authors for the reconciliation in the paper's Section 11, on a single
-SOFR-style discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
+single overnight-indexed discount curve. There is no projection curve: floating legs are daily-compounded overnight legs, so a
 coupon is `N (D(a)/D(b) - 1)` paid at `p`.
 
-The par OIS quotes in `rfr_reference.py` are **illustrative, not a market snapshot**. Times are years from the
+The par OIS quotes in `rfr_reference.py` are an **invented placeholder** so the replay test runs without third-party data; `generate --curve FILE` derives the quotes from a curve file instead (the published reconciliation used the Bank of England SONIA curve, see docs/BOE_CURVE.md). Times are years from the
 valuation date, and no calendar logic is involved.
 
 | file | role |

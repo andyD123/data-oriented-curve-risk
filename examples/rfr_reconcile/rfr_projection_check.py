@@ -4,7 +4,8 @@
 Standard library only; reuses the single-curve reference (rfr_reference.py) for the log-linear curve, the box-shifted
 curve and the par-OIS bootstrap. Two modes:
 
-  rfr_projection_check.py generate [dir]  write wave_buckets.txt, unit_cashflows_wave.txt (discount unit cashflows and
+  rfr_projection_check.py generate [dir] [--curve FILE]
+                                          write wave_buckets.txt, unit_cashflows_wave.txt (discount unit cashflows and
                                           projection terms) and wave_risk_<eps>.txt (central differences through full
                                           valuation, box shifts applied to the discount and the projection curve)
   rfr_projection_check.py check [dir]     read scan_wave_risk.txt (written by the C++ scan_wave) and check: finite-
@@ -21,7 +22,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from rfr_reference import Curve, Shifted, bootstrap, overlap, QUOTES, EPSILONS, fmt, matrix  # noqa: E402
+from rfr_reference import Curve, Shifted, bootstrap, overlap, QUOTES, EPSILONS, fmt, matrix, quotes_from_curve_file  # noqa: E402
 
 
 def projection_curve(disc):
@@ -65,8 +66,8 @@ def records(inst, D, P):
     return unit, proj
 
 
-def write_fixtures(d):
-    D = bootstrap(QUOTES); P = projection_curve(D); K = len(D.B) - 1
+def write_fixtures(d, quotes=None):
+    D = bootstrap(QUOTES if quotes is None else quotes); P = projection_curve(D); K = len(D.B) - 1
     insts = book()
     row = ' '.join(fmt(b) for b in D.B)
     (d / 'wave_buckets.txt').write_text(row + '\n' + row + '\n')
@@ -131,7 +132,8 @@ if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else ''
     d = Path(sys.argv[2] if len(sys.argv) > 2 else '.').resolve()
     if mode == 'generate':
-        write_fixtures(d)
+        curve_file = sys.argv[sys.argv.index('--curve') + 1] if '--curve' in sys.argv else None
+        write_fixtures(d, quotes_from_curve_file(curve_file) if curve_file else None)
     elif mode == 'check':
         sys.exit(check(d))
     else:
