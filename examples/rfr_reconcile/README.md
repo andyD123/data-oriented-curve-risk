@@ -10,7 +10,7 @@ valuation date, and no calendar logic is involved.
 | file | role |
 |---|---|
 | `rfr_reference.py generate` | bootstrap (log-linear discount factors), value the book, export unit cashflows, write finite-difference wave risk at five bump sizes |
-| `scan_wave <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
+| `scan_rfr <dir>` | the C++ reverse scan on `unit_cashflows_wave.txt` and `wave_buckets.txt` |
 | `rfr_reference.py check` | direct-overlap oracle, explicit adjoint, finite-difference convergence, quote risk (wave risk x bootstrap Jacobian vs re-bootstrap) and the Hagan hedge solve |
 
 Run `ctest -R rfr_reconcile_replay`, which checks both the committed fixture and a freshly generated fixture, or run the three commands by hand:
