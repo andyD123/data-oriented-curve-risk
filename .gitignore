@@ -17,3 +17,8 @@ node_modules/
 *.toc
 TASKS.md
 examples/benchmark/rfr_curves_boe.txt
+
+# BoE-derived data: licence limits redistribution; keep local only
+examples/benchmark/rfr_curves_boe.txt
+benchmarks/results/*boe*/
+oisddata.zip

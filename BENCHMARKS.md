@@ -25,12 +25,31 @@ Command: `bench_library 500000 1 3`.
 | GRP AVX2, 8 lanes, date table + kernel | 31.5 ms | 0.954 | **764×** |
 
 GRP is 14.6× faster than SCAN per curve update. The grouped kernel with normal stores takes 44.7 ms; with
-streaming stores 31.4 ms. On the portable auto-vectorised backend (no intrinsics) GRP takes 49.9 ms (467× vs BASE).
+streaming stores 31.4 ms. On the portable auto-vectorised backend (no intrinsics) GRP takes 49.9 ms (467× vs the BASE of that run, 23,263 ms; a separate program run).
 GRP agrees with SCAN to 3.6e-15 relative.
 
-**Write-only reference.** Streaming 273.5 MB of zeros (the padded output size) took 8.3-10.2 ms across
-repeated runs on this machine (27-33 GB/s; `write_floor`, three runs saved), so the 31.4 ms kernel is roughly
-3-4× the write-only time.
+**Write-only reference.** Streaming 273.5 MB of zeros (the padded output size) took 8.3-8.6 ms in the three
+saved runs on this machine (31.6-33.0 GB/s; `write_floor`), so the 31.4 ms kernel is roughly 3-4× the
+write-only time. The write-only figure ignores input read traffic (roughly 80 MB of cashflow amounts plus date
+indices), so it is a lower bound on the memory floor.
+
+**Copy reference.** A plain `memcpy` of a 273.5 MB buffer (read plus write, 15 runs, one-off program, not in the
+repository) took 27.8 ms at best and about 29.3 ms typically, so the 31.5 ms risk calculation is about 1.1× the
+best copy time. Untuned library `memcpy`; one measurement.
+
+**Structural zeros.** Two thirds of the book (bonds and compounded-OIS swaps) have no projection leg, so about
+12 of the 33 million outputs are zero by construction (derived from the book composition, not counted in the
+run). Over the remaining ~21 million the streaming kernel costs about 1.5 ns per output instead of 0.95 ns.
+
+**Scalar vs lanes.** The 52× row includes replication (288 ms); the lane rows exclude it. The scalar ladder alone
+takes 170 ms, so the lane kernel is 3.8× (normal stores) or 5.4× (streaming stores) faster than the scalar ladder.
+
+**Output layout.** Output stays grouped and interleaved (66 consecutive eight-lane vectors per group); the timed
+kernel includes no de-interleave. `gather` produces a per-instrument view through the lane-to-instrument map
+and is not part of the timing.
+
+**Group storage.** Each `Group` owns several small `std::vector`s (no single flat arena); a few heap allocations
+per group, 64,750 groups here. The effect of an arena was not measured.
 
 ## Adjoint baselines (500,000 instruments, scalar, replication excluded)
 
@@ -51,7 +70,7 @@ reverse traversal; it does not isolate tape-memory traffic and says nothing abou
 | 30,000 | 5,876 | 63.8% | 1.09 |
 | 100,000 | 14,794 | 84.5% | 1.17 |
 | 300,000 | 39,831 | 94.1% | 1.03 |
-| 500,000 | 64,750 | 96.5% | 0.89 |
+| 500,000 | 64,750 | 96.5% | 0.89 (separate best-of-5 run; the headline run above gives 0.95 with the table refresh) |
 
 Small books pay more because groups are less full. No cost increase appears when the output outgrows the cache
 on this machine: the streaming-store kernel is write-bound.

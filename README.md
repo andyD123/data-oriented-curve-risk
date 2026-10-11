@@ -2,7 +2,8 @@
 
 > **764× faster than bump-and-reprice** on a 500,000-instrument book (0.95 ns per sensitivity, single thread, AVX2, Intel i7-12700K; 52× for the scalar scan alone). See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
 
-Companion sources for **"Breaking the Memory Wall in Rates Risk: Data-Oriented Design and the Reverse Scan Algorithm"** (Andrew Drakeford & Lars Schouw, October 2026).
+Companion sources for **"Reaching the Memory Wall in Rates Risk: Data-Oriented Design and the Reverse Scan Algorithm"** (Andrew Drakeford & Lars Schouw, October 2026).
+Related work: [DR3](https://github.com/andyD123/DR3), a C++ library for writing vectorised code with generic lambdas and filters, where the instruction set is switched by changing the enclosing namespace.
 The library computes first-order sensitivity to interval-forward **waves** (Hagan box stencils). The contribution here is data-oriented organisation: shared dates, grouped instruments, deal-axis SIMD, streaming non-temporal stores, and reverse suffix scans.
 
 ## The idea
@@ -38,6 +39,9 @@ faster than a direct analytic Hessian and about 5,000x faster than central bump-
 - Results are analytic first derivatives per unit forward shift, not finite-shock P&L.
 - Tested on Linux x86-64 with GCC and Clang. Windows/MSVC and Apple/ARM were not run.
 - Benchmark figures are single-threaded; see [BENCHMARKS.md](BENCHMARKS.md).
+- The reference reconciliation covers single-curve instruments only; the projection pass and cross-curve Jacobian block are not reconciled.
+- Groups own separate small vectors rather than viewing one flat arena; the effect of an arena was not measured.
+- Results on third-party data (for example the Bank of England curve) are kept local and are not published here.
 
 ## Reading the examples
 
