@@ -37,4 +37,8 @@ To repeat only the gamma checks:
 
 The archived QuantLib result is FIRST-ORDER evidence. The mixed-gamma regression independently reprices the exact coupon formula constructed from QuantLib-exported values; the subsequent **external** QuantLib Python 1.43 run reported passing second-order reconciliation for two selected mixed-wave coupon cases; see [the dated evidence](QUANTLIB_LIVE_OIS_GAMMA_2026-10-11.md). No stochastic convexity approximation is being certified.
 
-The branch is experimental, intentionally does not merge into main, and makes no new production speedup claim.
+Historical note: this text originally described an experimental branch;
+Stage 1 was subsequently merged as PR #3 (commit
+8ab6f4beeb60519f33cc507a754188962e627bb3), without touching the
+first-order kernel. Stage 2 and later independent QuantLib validation
+are documented separately. No new production speedup claim is made here.
