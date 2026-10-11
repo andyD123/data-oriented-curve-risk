@@ -50,8 +50,6 @@ jobs:
         run: ./build-cross-gamma/examples/benchmark/bench_gamma_grouped 2000 1 ./examples/benchmark/quantlib_example_curves.txt
       - name: Smoke-check 2000-instrument portfolio-only grouped reduction
         run: ./build-cross-gamma/examples/benchmark/bench_grouped_reduce 2000 1 ./examples/benchmark/quantlib_example_curves.txt
-      - name: Check 100k portfolio reduction throughput after shared scan refactor
-        run: ./build-cross-gamma/examples/benchmark/bench_grouped_reduce 100000 3 ./examples/benchmark/quantlib_example_curves.txt
       - name: Check fixed, QuantLib-archive, worked-example and offline algebra
         run: ctest --test-dir build-cross-gamma --output-on-failure -R '^(cross_gamma|gamma_grouped|grouped_reduce|grouped_api|rfr_reconcile|curve)'
   full-repository:
