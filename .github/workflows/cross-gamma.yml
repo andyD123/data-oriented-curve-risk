@@ -23,7 +23,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install QuantLib Python 1.43
-        run: python -m pip install --disable-pip-version-check --only-binary=:all: 'QuantLib==1.43'
+        run: >
+          python -m pip install --disable-pip-version-check
+          --only-binary=:all: 'QuantLib==1.43'
       - name: Reprice standard, stress and interior-bucket OIS gamma
         run: python examples/cross_gamma/quantlib/live_ois_cross_gamma.py --scenario all
   regression:
