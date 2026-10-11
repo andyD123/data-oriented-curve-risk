@@ -22,8 +22,3 @@ Do not combine rows from different machines/runs into one benchmark table.
 | Seven-instrument Hagan hedge | `python3 examples/hagan_waves/hagan_hedge.py --book paper7` | Named population; explicit back-substitution. |
 | Quote-risk composition | optional CTest `quantlib_quote_risk_reconciliation` | Source generates two quote steps and checker Richardson-extrapolates direct risk and Jacobian with a failure gate. Fresh QuantLib run still required. |
 
-## Publication rule
-
-A timing in the paper should name the exact recorded file or frozen release that supports it. If a source change
-alters the timed calculation, including output-unit scaling, retain old timings as historical records and generate
-a new timing rather than silently relabelling them.
