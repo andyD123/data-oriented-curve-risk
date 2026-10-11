@@ -1,4 +1,4 @@
-# Lars cross-gamma research branch — 10 October 2026
+# Lars cross-gamma research branch
 
 Source: the uploaded Lars draft archive `data-oriented-curve-risk-lars(1).zip`, SHA-256 `8d3e1dea3b4adcb5571a275ce414c6998646108e1362e16a7c8a13b415a46b02`. Its local Git HEAD is `3a7fcd3f4d1fcab43960ff762e0c91fc1186435e` (not present on this GitHub remote).
 
@@ -11,7 +11,7 @@ Caveats: Hessian factorisation by itself applies to fixed discounted cashflows. 
 Status: experimental, not publication-benchmarked, no claims of unchanged bitwise rounding or improved mixed-book speed. Run the focused local C++20 regression before integrating with the core CI. For the full independent QuantLib investigation, consult the handoff ZIP prepared on 10 October 2026.
 
 
-## Correctness follow-up — 10 October 2026
+## Correctness follow-up 
 
 The optional gamma calculation remains separate from the existing first-order grouped path.
 
