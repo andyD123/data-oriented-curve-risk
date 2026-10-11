@@ -1,8 +1,12 @@
 # benchmark_paper — the §9 workload and historical timing record
 
+> The curve input is now the SOFR-style RFR curve. The `recorded_*` timing files below were produced on the earlier
+> two-curve input with the same node grids and instrument structure, and are kept as historical records, not
+> re-labelled as runs on the current input.
+
 Reproduces the table in §9 of the paper: 500,000 instruments, half semi-annual fixed-rate bonds and half
-annual-30/360-vs-6M-Act/360 swaps, maturities 1–29y, on the Eonia/Euribor6M curves of the
-market multi-curve dataset (`market_example_curves.txt`, 30 + 36 forward buckets), 66 sensitivities
+annual-30/360-vs-6M-Act/360 swaps, maturities 1–29y, on a single SOFR-style RFR curve (`rfr_curves.txt`,
+illustrative par OIS quotes, 30 + 36 forward buckets; the projection block carries the same curve), 66 sensitivities
 per instrument, streaming output. The current source reports first derivatives per unit
 instantaneous-forward-rate shift, matching the library and manuscript. The committed 50.9 ms record is older:
 that historical executable used interval-integrated-forward coordinates. The two outputs differ only by the

@@ -397,13 +397,13 @@ int main(int argc, char** argv)
     size_t N = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 100000;
     int run_base = argc > 2 ? std::atoi(argv[2]) : 1;
     int reps = argc > 3 ? std::atoi(argv[3]) : 3;
-    Curve ois, proj; load_curves("market_example_curves.txt", ois, proj);
+    Curve ois, proj; load_curves("rfr_curves.txt", ois, proj);
     const int Ko = ois.K(), Kp = proj.K();
 
     std::vector<Signature> sigs;
     auto book = make_portfolio(N, sigs, 42);
     size_t ncf = 0; for (auto& b : book) { if (auto* x = dynamic_cast<Bond*>(b.get())) ncf += x->cfs.size(); else { auto* s = static_cast<Swap*>(b.get()); ncf += s->fixed.size() + s->flt.size(); } }
-    std::printf("N=%zu instruments, %zu signatures, %.1f cashflows/instrument, K=%d+%d (Eonia+Euribor6M nodes from market dataset)\n", N, sigs.size(), (double)ncf / N, Ko, Kp);
+    std::printf("N=%zu instruments, %zu signatures, %.1f cashflows/instrument, K=%d+%d (discount + forward-projection nodes, SOFR-style RFR curve)\n", N, sigs.size(), (double)ncf / N, Ko, Kp);
 
     std::vector<double> out_ois_s(N * Ko), out_proj_s(N * Kp);
 

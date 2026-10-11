@@ -24,3 +24,11 @@ For the historical 500,000-instrument paper layout, logical output is 264,000,00
 64,034 padded eight-lane groups occupy 270,479,616 bytes. A 270 MiB write-only experiment
 is a different byte count. Neither old timings nor their workloads were silently replaced.
 No automated CI workflow or expensive hardware sweep was added by this review.
+
+## Benchmark curve input
+
+`examples/benchmark/rfr_curves.txt` (and its copy in `examples/benchmark_paper/`) replaced the earlier two-curve
+Eonia/Euribor node file. It keeps the same node grids (30 + 36 forward buckets) and instrument section, with
+discount factors from an illustrative SOFR-style par OIS bootstrap (`examples/benchmark/make_rfr_curves.py`);
+the projection block carries the same curve, as in a one-curve RFR market. The `recorded_*` timing files were
+produced on the earlier input and remain historical records.
