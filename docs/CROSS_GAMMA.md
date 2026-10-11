@@ -52,7 +52,7 @@ Relative error: reduced form vs direct analytic 1.7e-14; finite difference vs re
 
 `bench_gamma_grouped` (500,000 mixed instruments, grouped eight-lane diagonal gamma and a K-value
 portfolio gamma reduction, on the SOFR-style RFR curve in `rfr_curves.txt`): the extra diagonal-gamma kernel
-costs about 0.8x the first-order kernel (`first_order_kernel_ms` 48, `gamma_diagonal_kernel_ms` 39 on this
+costs about 0.8x the first-order kernel (`first_order_kernel_ms` 48, `gamma_diagonal_kernel_ms` 39, portable backend, on this
 machine), with 59,820 oracle checks at 5.6e-12. It has no bump baseline, so it is a cost measurement.
 
 ## Caveats
