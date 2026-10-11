@@ -217,6 +217,17 @@ struct GroupedDiscountCrossGammaView {
             throw std::invalid_argument("grouped gamma view: stale table or null buffers");
     }
 
+    // The view borrows its layout, stencils and two AoSoA output buffers.
+    // A temporary layout or stencil would leave a dangling reference.
+    GroupedDiscountCrossGammaView(GroupLayout&&, const Stencils&, int,
+                                  const double*, const double*) = delete;
+    GroupedDiscountCrossGammaView(const GroupLayout&&, const Stencils&, int,
+                                  const double*, const double*) = delete;
+    GroupedDiscountCrossGammaView(const GroupLayout&, Stencils&&, int,
+                                  const double*, const double*) = delete;
+    GroupedDiscountCrossGammaView(const GroupLayout&, const Stencils&&, int,
+                                  const double*, const double*) = delete;
+
     const Group& group(size_t gi, int lane) const {
         if (gi >= layout.groups.size() || lane < 0 ||
             lane >= layout.groups[gi].n_valid)
