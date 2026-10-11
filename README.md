@@ -1,6 +1,6 @@
 # data-oriented-curve-risk: Ultra-Fast Data-Oriented Curve Risk
 
-> **601× faster than bump-and-reprice** on a 500,000-instrument book (1.18 ns per sensitivity, single thread, AVX2, Intel i7-12700K; 51× for the scalar scan alone; roughly 600×-780× across repeated runs and cores), on the Bank of England SONIA curve. See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
+> **695× faster than bump-and-reprice** on a 500,000-instrument book (33.0 ms, 1.00 ns per sensitivity, one AVX2 core pinned to logical CPU 2, median of three runs, Intel i7-12700K; roughly 600×-780× across repeated runs and cores). An earlier unpinned best-of-three landed on a slower core (39.1 ms, 601×, 1.18 ns). See [BENCHMARKS.md](BENCHMARKS.md) for baseline, hardware and caveats. Pure standalone C++20 with **zero external dependencies** and no object-oriented curve or calendar layer.
 
 Companion sources for **"Risk at the Write Speed: Ultra Fast Data Oriented DV01"** (Andrew Drakeford & Lars Schouw).
 Related work: [DR3](https://github.com/andyD123/DR3), a C++ library for writing vectorised code with generic lambdas and filters, where the instruction set is switched by changing the enclosing namespace.
@@ -59,11 +59,12 @@ An opt-in example tests whether instruments sharing one schedule should be group
 of the hardware SIMD width. Instead of making one logical group equal to one eight-double vector,
 one schedule group may contain many eight-lane blocks driven by the same date/bucket traversal.
 
-On a controlled 65,536-instrument, 60-cashflow, 40-bucket workload, the prototype reduced the
-streaming-store AVX-512 kernel from 5.724 ms at logical width 8 to 2.675 ms at width 2,048
-(2.14x), with every wider grouping reconciled against the width-8 output. AVX2 runs showed the
-same broad effect. This remains an architectural experiment rather than the production
-discount+projection path.
+On a controlled 65,536-instrument, 60-cashflow, 40-bucket fixed-cashflow book, an AVX-512 run
+went from 5.724 ms at logical width 8 to 2.675 ms at width 2,048 (2.14x), with every wider
+grouping reconciled against the width-8 output. AVX2 runs of that same book were about 2-2.8x.
+That is not the 500,000-instrument mixed book and not a published-table row. Production
+`build_layout` accepts `group_lanes` (a multiple of 8) and defaults to 8, which is the kernel
+the paper times. Grouped diagonal gamma rejects wider groups.
 
 Build it with `-DLADDER_BUILD_WIDE_GROUP_EXPERIMENT=ON`. See
 [docs/WIDE_SCHEDULE_GROUPS.md](docs/WIDE_SCHEDULE_GROUPS.md) for the implementation,
@@ -97,8 +98,10 @@ lane entries are zero. Each layout uses **one discount/projection curve pair**, 
 time axis and its supplied day scale. A signature is not a separate curve handle.
 Adapters for curves with different reference dates must convert times explicitly.
 Call `refresh_table` before `scan_grouped`, and again after changing the risk grid or
-curve values. Factors must be finite and positive. Output has
-`groups * (K_discount + K_projection) * 8` doubles and must be 64-byte aligned.
+curve values. Factors must be finite and positive. Output length is `output_doubles(K_discount, K_projection)`,
+which equals `groups * (K_discount + K_projection) * 8` when every group has one block of eight.
+The buffer must be 64-byte aligned. `build_layout` takes an optional `group_lanes` (a positive
+multiple of 8, default 8). The published timings use the default.
 `ladder/aligned_memory.hpp` provides matching aligned allocation/deallocation.
 Public layout internals must not be manually corrupted; buffer lengths remain caller obligations.
 
@@ -111,12 +114,13 @@ separate costs.
 
 ## Supported formulas and reference validation
 
-The replication helpers implement the displayed fixed, forecast IBOR-ratio and fully
-forecast compounded-OIS-ratio formulas. They do not inspect calendars, historical
-fixings, coupon pricers, averaging/lookback/lockout conventions, optionality or gearing.
-A caller must incorporate gearing into the scale, separate fixed coupons and supply
-correct forecast periods. Arbitrary seasoned OIS coupons are not supported merely by
-passing their full start/end dates to the simple ratio helper.
+The replication helpers implement the displayed fixed, forecast IBOR-ratio and compounded-OIS-ratio
+formulas. A fully forecast overnight coupon uses realised factor `H = 1`. A seasoned coupon passes
+the growth already fixed as `OisFlow::realised` and passes `a` as the start of the remaining forecast
+window, not the original accrual start. They do not inspect calendars, historical fixings, coupon
+pricers, averaging/lookback/lockout conventions, optionality or gearing. A caller must incorporate
+gearing into the scale, separate fixed coupons and supply the forecast window. Passing the original
+accrual start with `H = 1` does not represent a coupon that has already fixed part of its compound.
 
 The test suite validates sensitivity ladders against both direct analytical oracles and
 high-precision central finite differences. `scan_wave` and its CTest replay consume

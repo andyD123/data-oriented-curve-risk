@@ -65,21 +65,24 @@ inline void scan_grouped_gamma_diagonal_kernel(
 
     for (size_t gi = 0; gi < L.groups.size(); ++gi) {
         const Group& G = L.groups[gi];
+        if (G.blocks != 1)
+            throw std::invalid_argument("grouped gamma: wide schedule groups are not implemented");
         scratch.prepare(G, K);
         const int nf = static_cast<int>(G.f_di.size());
         const int no = static_cast<int>(G.o_di.size());
-        for (int q = 0; q < nf; ++q) {
-            const double ratio = T.P[G.f_di[q][1]] / T.P[G.f_di[q][2]];
-            scratch.ibor[q] = vmul(vload(G.f_scale[q].v), vbroadcast(ratio - 1.0));
-        }
+        detail::load_one_block_amounts(G, T, 0,
+            nf ? scratch.ibor.data() : nullptr,
+            no ? scratch.ois_p.data() : nullptr,
+            no ? scratch.ois_a.data() : nullptr,
+            no ? scratch.ois_b.data() : nullptr);
         for (int q = 0; q < no; ++q) {
             const int ip = G.o_di[q][0], ia = G.o_di[q][1], ib = G.o_di[q][2];
             const double Dp = T.D[ip], Da = T.D[ia], Db = T.D[ib];
             const double f = Dp * Da / Db;
-            const vec8 N = vload(G.o_N[q].v);
-            scratch.ois_p[q] = vmul(N, vbroadcast((f - Dp) / Dp));
-            scratch.ois_a[q] = vmul(N, vbroadcast(f / Da));
-            scratch.ois_b[q] = vmul(N, vbroadcast(-f / Db));
+            // IBOR forecast amounts are held fixed (loaded above from the projection curve).
+            // On a single curve that forecast moves with the discount curve; this diagonal does not include that.
+            // The overnight product correction scales with N*realised, which is o_N when realised is 1.
+            const vec8 coef = G.realised_ois ? vload(G.o_NH[q].v) : vload(G.o_N[q].v);
             const double a = T.t[ia], b = T.t[ib], p = T.t[ip];
             if (p < b) throw std::invalid_argument(
                 "grouped gamma: OIS payment precedes accrual end");
@@ -97,7 +100,7 @@ inline void scan_grouped_gamma_diagonal_kernel(
                     scratch.ois_diag[wave] = vzero();
                 }
                 scratch.ois_diag[wave] = vfma(
-                    N, vbroadcast(-2.0 * f * r * s), scratch.ois_diag[wave]);
+                    coef, vbroadcast(-2.0 * f * r * s), scratch.ois_diag[wave]);
             }
         }
 
@@ -215,6 +218,9 @@ struct GroupedDiscountCrossGammaView {
         if (Kp < 0 || !L.refreshed || L.discount_grid != Sd.B ||
             (!L.groups.empty() && (!delta || !gamma)))
             throw std::invalid_argument("grouped gamma view: stale table or null buffers");
+        for (const auto& G : L.groups)
+            if (G.blocks != 1)
+                throw std::invalid_argument("grouped gamma view: wide schedule groups are not implemented");
     }
 
     // The view borrows its layout, stencils and two AoSoA output buffers.
@@ -253,11 +259,11 @@ struct GroupedDiscountCrossGammaView {
         const int lo = std::min(j, k), hi = std::max(j, k);
         double result = -discount_waves.len(lo + 1) * gradient(gi, lane, hi);
         for (size_t q = 0; q < G.o_di.size(); ++q) {
-            const double N = G.o_N[q].v[lane];
-            if (N == 0.0) continue;
+            const double coef = G.realised_ois ? G.o_NH[q].v[lane] : G.o_N[q].v[lane];
+            if (coef == 0.0) continue;
             const int ip = G.o_di[q][0], ia = G.o_di[q][1], ib = G.o_di[q][2];
             const DateTable& T = layout.table;
-            const double A = N * T.D[ip] * T.D[ia] / T.D[ib];
+            const double A = coef * T.D[ip] * T.D[ia] / T.D[ib];
             const double a = T.t[ia], b = T.t[ib], p = T.t[ip];
             if (p < b) throw std::invalid_argument(
                 "grouped gamma view: OIS payment before accrual end");
@@ -294,14 +300,14 @@ struct GroupedDiscountCrossGammaView {
             lower += discount_waves.len(j + 1) * v[j];
         }
         for (size_t q = 0; q < G.o_di.size(); ++q) {
-            const double N = G.o_N[q].v[lane];
-            if (N == 0.0) continue;
+            const double coef = G.realised_ois ? G.o_NH[q].v[lane] : G.o_N[q].v[lane];
+            if (coef == 0.0) continue;
             const int ip = G.o_di[q][0], ia = G.o_di[q][1], ib = G.o_di[q][2];
             const DateTable& T = layout.table;
             const double a = T.t[ia], b = T.t[ib], p = T.t[ip];
             if (p < b) throw std::invalid_argument(
                 "grouped gamma HVP: OIS payment before accrual end");
-            const double A = N * T.D[ip] * T.D[ia] / T.D[ib];
+            const double A = coef * T.D[ip] * T.D[ia] / T.D[ib];
             double rv = 0.0, sv = 0.0;
             for (int j = 0; j < K; ++j) {
                 const double r = discount_waves.overlap(j + 1, b) - discount_waves.overlap(j + 1, a);
