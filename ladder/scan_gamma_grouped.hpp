@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
+#include <span>
 #include <vector>
 #include "scan_simd.hpp"
 
@@ -14,6 +15,7 @@ namespace ladder {
 // One scratch instance per concurrent caller, reused across groups and runs.
 struct GroupGammaScratch {
     std::vector<vec8> ibor, ois_p, ois_a, ois_b, ois_diag, portfolio_acc;
+    std::vector<double> hvp_work;
     std::vector<std::uint64_t> tags;
     std::uint64_t epoch = 0;
 
@@ -191,5 +193,119 @@ inline void scan_grouped_gamma_diagonal(
     GroupGammaScratch scratch;
     scan_grouped_gamma_diagonal<policy>(L, Sd, out, scratch);
 }
+
+
+// Zero-copy lookup over the existing first-order AoSoA and the corrected
+// gamma diagonal. Both buffers and the refreshed layout must outlive the
+// view. H[j,j] is ALREADY OIS-corrected; off-diagonal entries include the
+// exact lag correction on demand, not an extra N*K*K output allocation.
+struct GroupedDiscountCrossGammaView {
+    const GroupLayout& layout;
+    const Stencils& discount_waves;
+    int Kp;
+    const double* first_order;
+    const double* diagonal;
+
+    GroupedDiscountCrossGammaView(const GroupLayout& L, const Stencils& Sd,
+                                  int projection_buckets, const double* delta,
+                                  const double* gamma)
+        : layout(L), discount_waves(Sd), Kp(projection_buckets),
+          first_order(delta), diagonal(gamma) {
+        Sd.validate();
+        if (Kp < 0 || !L.refreshed || L.discount_grid != Sd.B ||
+            (!L.groups.empty() && (!delta || !gamma)))
+            throw std::invalid_argument("grouped gamma view: stale table or null buffers");
+    }
+
+    const Group& group(size_t gi, int lane) const {
+        if (gi >= layout.groups.size() || lane < 0 ||
+            lane >= layout.groups[gi].n_valid)
+            throw std::out_of_range("grouped gamma view: invalid group/lane");
+        return layout.groups[gi];
+    }
+
+    double gradient(size_t gi, int lane, int j) const {
+        return first_order[gi * layout.stride(discount_waves.K(), Kp)
+                           + static_cast<size_t>(j) * LANES + lane];
+    }
+    double gamma_diagonal(size_t gi, int lane, int j) const {
+        return diagonal[gi * grouped_gamma_stride(discount_waves.K())
+                        + static_cast<size_t>(j) * LANES + lane];
+    }
+
+    double at(size_t gi, int lane, int j, int k) const {
+        const Group& G = group(gi, lane);
+        const int K = discount_waves.K();
+        if (j < 0 || k < 0 || j >= K || k >= K)
+            throw std::out_of_range("grouped gamma view: wave index");
+        if (j == k) return gamma_diagonal(gi, lane, j);
+        const int lo = std::min(j, k), hi = std::max(j, k);
+        double result = -discount_waves.len(lo + 1) * gradient(gi, lane, hi);
+        for (size_t q = 0; q < G.o_di.size(); ++q) {
+            const double N = G.o_N[q].v[lane];
+            if (N == 0.0) continue;
+            const int ip = G.o_di[q][0], ia = G.o_di[q][1], ib = G.o_di[q][2];
+            const DateTable& T = layout.table;
+            const double A = N * T.D[ip] * T.D[ia] / T.D[ib];
+            const double a = T.t[ia], b = T.t[ib], p = T.t[ip];
+            if (p < b) throw std::invalid_argument(
+                "grouped gamma view: OIS payment before accrual end");
+            const double rj = discount_waves.overlap(j + 1, b) - discount_waves.overlap(j + 1, a);
+            const double rk = discount_waves.overlap(k + 1, b) - discount_waves.overlap(k + 1, a);
+            const double sj = discount_waves.overlap(j + 1, p) - discount_waves.overlap(j + 1, b);
+            const double sk = discount_waves.overlap(k + 1, p) - discount_waves.overlap(k + 1, b);
+            result -= A * (rj * sk + sj * rk);
+        }
+        return result;
+    }
+
+    // O(K + K*number_of_OIS_coupons). Because diagonal already includes
+    // the OIS correction, only the OFF-DIAGONAL part of each rank-two term
+    // is applied below. This avoids the otherwise easy double-count bug.
+    // The caller owns reusable scratch; v and out may be the same span.
+    void multiply(size_t gi, int lane, std::span<const double> v,
+                  std::span<double> out, GroupGammaScratch& scratch) const {
+        const Group& G = group(gi, lane);
+        const int K = discount_waves.K();
+        if (v.size() != static_cast<size_t>(K) || out.size() != static_cast<size_t>(K))
+            throw std::invalid_argument("grouped gamma HVP: wrong vector shape");
+        scratch.hvp_work.resize(K);
+        auto& result = scratch.hvp_work;
+        double upper = 0.0;
+        for (int j = K - 1; j >= 0; --j) {
+            result[j] = -discount_waves.len(j + 1) * upper;
+            upper += gradient(gi, lane, j) * v[j];
+        }
+        double lower = 0.0;
+        for (int j = 0; j < K; ++j) {
+            result[j] += gamma_diagonal(gi, lane, j) * v[j] -
+                         gradient(gi, lane, j) * lower;
+            lower += discount_waves.len(j + 1) * v[j];
+        }
+        for (size_t q = 0; q < G.o_di.size(); ++q) {
+            const double N = G.o_N[q].v[lane];
+            if (N == 0.0) continue;
+            const int ip = G.o_di[q][0], ia = G.o_di[q][1], ib = G.o_di[q][2];
+            const DateTable& T = layout.table;
+            const double a = T.t[ia], b = T.t[ib], p = T.t[ip];
+            if (p < b) throw std::invalid_argument(
+                "grouped gamma HVP: OIS payment before accrual end");
+            const double A = N * T.D[ip] * T.D[ia] / T.D[ib];
+            double rv = 0.0, sv = 0.0;
+            for (int j = 0; j < K; ++j) {
+                const double r = discount_waves.overlap(j + 1, b) - discount_waves.overlap(j + 1, a);
+                const double s = discount_waves.overlap(j + 1, p) - discount_waves.overlap(j + 1, b);
+                rv += r * v[j];
+                sv += s * v[j];
+            }
+            for (int j = 0; j < K; ++j) {
+                const double r = discount_waves.overlap(j + 1, b) - discount_waves.overlap(j + 1, a);
+                const double s = discount_waves.overlap(j + 1, p) - discount_waves.overlap(j + 1, b);
+                result[j] -= A * (r * sv + s * rv - 2.0 * r * s * v[j]);
+            }
+        }
+        std::copy(result.begin(), result.end(), out.begin());
+    }
+};
 
 } // namespace ladder
