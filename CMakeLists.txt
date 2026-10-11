@@ -189,6 +189,9 @@ if(LADDER_BUILD_EXAMPLES)
       add_test(NAME wave_replay_and_input_checks COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_examples.py" "$<TARGET_FILE:scan_wave>"
         "$<TARGET_FILE:${_bench_for_tests}>" "${CMAKE_CURRENT_SOURCE_DIR}/examples/hagan_waves")
+      add_test(NAME rfr_reconcile_replay COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_rfr_reconcile.py" "$<TARGET_FILE:scan_wave>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/examples/rfr_reconcile")
     endif()
   endif()
 endif()
