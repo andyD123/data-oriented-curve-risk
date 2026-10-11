@@ -127,3 +127,7 @@ See `VALIDATION.md` for the checks actually performed and verification suites.
 ## Evidence
 
 Validation: [VALIDATION.md](VALIDATION.md). Benchmarks: [BENCHMARKS.md](BENCHMARKS.md). Claim-to-code mapping: [docs/PAPER_EVIDENCE.md](docs/PAPER_EVIDENCE.md). Provenance and unit notes: [docs/HISTORY.md](docs/HISTORY.md).
+
+## License
+
+Copyright 2026 Andrew Drakeford and Lars Schouw. Apache License 2.0, the same as [DR3](https://github.com/andyD123/DR3); see [LICENSE](LICENSE). The licence covers this repository's code and documents. It does not cover Bank of England data, which is not included here and is subject to the Bank's own terms (see [docs/BOE_CURVE.md](docs/BOE_CURVE.md)).
